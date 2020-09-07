@@ -43,7 +43,7 @@ This renderer leverages the _projector.js_ module from _SVGRenderer_ to get a pr
 1. Put each face in a group of faces with the same normal and depth (distance from 0,0,0 world position)
 2. For each face, in order of depth, from back to front, union the projected polygon to the accumulated faces in that normal group.
 3. For that face, _subtract_ the projected polygon from all other normal groups.
-4. Finally, _union_ that face to the _outline group.
+4. Finally, _union_ that face to the _outline_ group.
 5. Proceed to the next-closest face and repeat from step 2.
 
 You will end up with a set of polygons, each matching a planar section of your model. They will all fit together exactly, since they all were assembled from the same set of faces, just with different logic.
