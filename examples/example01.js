@@ -50,7 +50,6 @@ function init() {
 
   var view = document.getElementById("view");
   var container = document.getElementById("plot");
-  var overla= document.getElementById("plot");
 
   // CAMERA
   camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 1, 8000);

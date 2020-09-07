@@ -2,7 +2,7 @@
  * based on SVGRenderer @author mrdoob / http://mrdoob.com/
  */
 
-import { Box2, Camera, Color, Matrix3, Matrix4, Object3D, Vector3 } from "../node_modules/three/build/three.module.js";
+import { Box2, Camera, Color, Matrix3, Matrix4, Object3D, Vector3 } from "three";
 import { Projector, RenderableFace} from "./projector.js";
 import { GeomUtil, Point, Segment } from "./geom/geom.js";
 import { Optimize } from "./optimize.js";
