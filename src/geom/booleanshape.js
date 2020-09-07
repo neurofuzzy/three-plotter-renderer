@@ -1,10 +1,8 @@
 // @ts-check
 
-const { Segment } = require("./geom");
-const { Shape } = require("./shapes");
-const { PolygonShape, CompoundShape } = require("./shapes");
-
-const clipperLib = require("js-angusj-clipper");
+import { Segment } from "./geom.js";
+import { Shape, PolygonShape, CompoundShape } from "./shapes.js";
+import * as clipperLib from "js-angusj-clipper";
 
 /** @type {clipperLib.ClipperLibWrapper} */
 let clipper = null;

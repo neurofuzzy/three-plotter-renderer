@@ -1,6 +1,6 @@
 
-import { GeomUtil, Point, Segment } from "./geom/geom";
-import { PolygonShape, CompoundShape } from "./geom/shapes";
+import { GeomUtil, Point, Segment } from "./geom/geom.js";
+import { PolygonShape, CompoundShape } from "./geom/shapes.js";
 import * as clipperLib from "js-angusj-clipper";
 
 /** @type {clipperLib.ClipperLibWrapper} */
