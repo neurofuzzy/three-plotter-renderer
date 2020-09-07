@@ -1,7 +1,6 @@
 
-import { Projector } from "./Projector";
-import { GeomUtil, Point, Segment } from "./geom/geom";
-import { Expander } from "./Expander";
+import { GeomUtil, Point, Segment } from "./geom/geom.js";
+import { Expander } from "./expander.js";
 
 export class Hatcher {
 

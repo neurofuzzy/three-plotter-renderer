@@ -1,6 +1,6 @@
-import { Segment, Point, GeomUtil } from "./geom/geom";
-import { PolygonShape } from "./geom/shapes";
-import { BooleanShape } from "./geom/booleanshape";
+import { Segment, Point, GeomUtil } from "./geom/geom.js";
+import { PolygonShape } from "./geom/shapes.js";
+import { BooleanShape } from "./geom/booleanshape.js";
 
 export class Analyzer {
   

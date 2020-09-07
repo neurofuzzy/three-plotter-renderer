@@ -1,6 +1,6 @@
 // @ts-check
 
-import { Point, BoundingBox, Segment, SegmentCollection, GeomUtil } from "./geom";
+import { Point, BoundingBox, Segment, SegmentCollection, GeomUtil } from "./geom.js";
 
 export class Shape extends SegmentCollection {
   constructor() {

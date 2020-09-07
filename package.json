@@ -2,9 +2,10 @@
   "name": "three-plotter-renderer",
   "version": "0.0.1",
   "description": "An SVG renderer with occlusion for plotters and SVG editors",
-  "main": "index.js",
+  "main": "dist/three-plotter-renderer.js",
+  "module": "src/plotter-renderer.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "build": "parcel build ./src/three-plotter-renderer.js --no-source-maps"
   },
   "repository": {
     "type": "git",
@@ -23,10 +24,15 @@
     "url": "https://github.com/neurofuzzy/three-plotter-renderer/issues"
   },
   "homepage": "https://github.com/neurofuzzy/three-plotter-renderer#readme",
-  "dependencies": {
-    "js-angusj-clipper": "^1.1.0"
+  "externals": {
+    "three": "THREE"
   },
   "devDependencies": {
+    "parcel-bundler": "^1.12.4",
+    "parcel-plugin-externals": "^0.5.1"
+  },
+  "dependencies": {
+    "js-angusj-clipper": "^1.1.0",
     "three": "^0.120.1"
   }
 }

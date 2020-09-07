@@ -1,5 +1,5 @@
-import { Segment, Segments, SegmentCollection, Point, GeomUtil } from "./geom/geom";
-import { Analyzer } from "./analyzer";
+import { Segment, Segments, SegmentCollection, Point, GeomUtil } from "./geom/geom.js";
+import { Analyzer } from "./analyzer.js";
 
 export class Optimize {
   /**

@@ -2,14 +2,14 @@
  * based on SVGRenderer @author mrdoob / http://mrdoob.com/
  */
 
-import { Box2, Camera, Color, Matrix3, Matrix4, Object3D, Vector3 } from "three";
-import { Projector, RenderableFace} from "./projector";
-import { GeomUtil, Point, Segment } from "./geom/geom";
-import { Optimize } from "./optimize";
-import { BooleanShape } from "./geom/booleanshape";
-import { PolygonShape } from "./geom/shapes";
-import { Expander } from "./expander";
-import { Hatcher } from "./Hatcher";
+import { Box2, Camera, Color, Matrix3, Matrix4, Object3D, Vector3 } from "../node_modules/three/build/three.module.js";
+import { Projector, RenderableFace} from "./projector.js";
+import { GeomUtil, Point, Segment } from "./geom/geom.js";
+import { Optimize } from "./optimize.js";
+import { BooleanShape } from "./geom/booleanshape.js";
+import { PolygonShape } from "./geom/shapes.js";
+import { Expander } from "./expander.js";
+import { Hatcher } from "./hatcher.js";
 
 var lop = (n) => {
   return Math.round(n * 100) / 100;
