@@ -1,0 +1,38 @@
+{
+  "name": "three-plotter-renderer",
+  "version": "0.0.1",
+  "description": "An SVG renderer with occlusion for plotters and SVG editors",
+  "main": "dist/three-plotter-renderer.js",
+  "module": "src/plotter-renderer.js",
+  "scripts": {
+    "build": "parcel build ./src/three-plotter-renderer.js --no-source-maps"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/neurofuzzy/three-plotter-renderer.git"
+  },
+  "keywords": [
+    "svg",
+    "plotter",
+    "renderer",
+    "three.js",
+    "clipper"
+  ],
+  "author": "Geoff Gaudreault",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/neurofuzzy/three-plotter-renderer/issues"
+  },
+  "homepage": "https://github.com/neurofuzzy/three-plotter-renderer#readme",
+  "externals": {
+    "three": "THREE"
+  },
+  "devDependencies": {
+    "parcel-bundler": "^1.12.4",
+    "parcel-plugin-externals": "^0.5.1"
+  },
+  "dependencies": {
+    "js-angusj-clipper": "^1.1.0",
+    "three": "^0.120.1"
+  }
+}
