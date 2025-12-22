@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Three Plotter Renderer - Examples</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --sidebar-width: 280px;
+            --bg-dark: #1a1a2e;
+            --bg-sidebar: #16213e;
+            --accent: #0f3460;
+            --accent-hover: #e94560;
+            --text: #eaeaea;
+            --text-muted: #a0a0a0;
+        }
+
+        html,
+        body {
+            height: 100%;
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background: var(--bg-dark);
+            color: var(--text);
+        }
+
+        .container {
+            display: flex;
+            height: 100%;
+        }
+
+        .sidebar {
+            width: var(--sidebar-width);
+            background: var(--bg-sidebar);
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+            border-right: 1px solid var(--accent);
+        }
+
+        .logo {
+            font-size: 1.4rem;
+            font-weight: 700;
+            margin-bottom: 8px;
+            background: linear-gradient(135deg, #e94560, #0f3460);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .tagline {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            margin-bottom: 32px;
+            line-height: 1.4;
+        }
+
+        .nav-section {
+            margin-bottom: 24px;
+        }
+
+        .nav-title {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--text-muted);
+            margin-bottom: 12px;
+        }
+
+        .nav-list {
+            list-style: none;
+        }
+
+        .nav-item {
+            margin-bottom: 4px;
+        }
+
+        .nav-link {
+            display: block;
+            padding: 10px 14px;
+            border-radius: 8px;
+            color: var(--text);
+            text-decoration: none;
+            transition: all 0.2s ease;
+            cursor: pointer;
+            font-size: 0.95rem;
+        }
+
+        .nav-link:hover {
+            background: var(--accent);
+        }
+
+        .nav-link.active {
+            background: var(--accent-hover);
+            font-weight: 500;
+        }
+
+        .nav-link-desc {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            margin-top: 2px;
+        }
+
+        .main {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .header {
+            padding: 16px 24px;
+            background: var(--bg-sidebar);
+            border-bottom: 1px solid var(--accent);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .current-example {
+            font-size: 1.1rem;
+            font-weight: 500;
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 12px;
+        }
+
+        .btn {
+            padding: 8px 16px;
+            border-radius: 6px;
+            border: 1px solid var(--accent);
+            background: transparent;
+            color: var(--text);
+            cursor: pointer;
+            font-size: 0.85rem;
+            transition: all 0.2s;
+        }
+
+        .btn:hover {
+            background: var(--accent);
+        }
+
+        .btn-primary {
+            background: var(--accent-hover);
+            border-color: var(--accent-hover);
+        }
+
+        .btn-primary:hover {
+            background: #d63a54;
+        }
+
+        .iframe-container {
+            flex: 1;
+            background: #000;
+        }
+
+        .iframe-container iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+        }
+
+        .footer {
+            padding: 12px 24px;
+            background: var(--bg-sidebar);
+            border-top: 1px solid var(--accent);
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .footer a {
+            color: var(--accent-hover);
+            text-decoration: none;
+        }
+
+        .footer a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <aside class="sidebar">
+            <div class="logo">Three Plotter Renderer</div>
+            <div class="tagline">SVG renderer for Three.js with hidden line removal</div>
+
+            <nav class="nav-section">
+                <div class="nav-title">Examples</div>
+                <ul class="nav-list">
+                    <li class="nav-item">
+                        <a class="nav-link active" data-src="example02.html" data-name="STL Viewer">
+                            STL Viewer
+                            <div class="nav-link-desc">Progressive SVG rendering</div>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" data-src="example01.html" data-name="Basic Shapes">
+                            Basic Shapes
+                            <div class="nav-link-desc">Primitive geometry demo</div>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" data-src="example03.html" data-name="Complex Model">
+                            Complex Model
+                            <div class="nav-link-desc">Detailed STL rendering</div>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" data-src="box.html" data-name="Box Demo">
+                            Box Demo
+                            <div class="nav-link-desc">Simple box geometry</div>
+                        </a>
+                    </li>
+                </ul>
+            </nav>
+
+            <nav class="nav-section">
+                <div class="nav-title">Experimental</div>
+                <ul class="nav-list">
+                    <li class="nav-item">
+                        <a class="nav-link" data-src="hidden-line-test.html" data-name="Hidden Line Algorithm">
+                            Hidden Line
+                            <div class="nav-link-desc">Edge-based algorithm test</div>
+                        </a>
+                    </li>
+                </ul>
+            </nav>
+        </aside>
+
+        <main class="main">
+            <header class="header">
+                <span class="current-example">STL Viewer</span>
+                <div class="header-actions">
+                    <button class="btn" id="open-new-tab">Open in New Tab</button>
+                    <button class="btn btn-primary" id="reload-btn">Reload</button>
+                </div>
+            </header>
+
+            <div class="iframe-container">
+                <iframe id="example-frame" src="example02.html"></iframe>
+            </div>
+
+            <footer class="footer">
+                <span>Use mouse to orbit, scroll to zoom</span>
+                <a href="https://github.com/neurofuzzy/three-plotter-renderer" target="_blank">GitHub →</a>
+            </footer>
+        </main>
+    </div>
+
+    <script>
+        const frame = document.getElementById('example-frame');
+        const title = document.querySelector('.current-example');
+        const navLinks = document.querySelectorAll('.nav-link');
+
+        navLinks.forEach(link => {
+            link.addEventListener('click', () => {
+                // Update active state
+                navLinks.forEach(l => l.classList.remove('active'));
+                link.classList.add('active');
+
+                // Load example
+                const src = link.dataset.src;
+                const name = link.dataset.name;
+                frame.src = src;
+                title.textContent = name;
+            });
+        });
+
+        document.getElementById('open-new-tab').addEventListener('click', () => {
+            window.open(frame.src, '_blank');
+        });
+
+        document.getElementById('reload-btn').addEventListener('click', () => {
+            frame.src = frame.src;
+        });
+    </script>
+</body>
+
+</html>

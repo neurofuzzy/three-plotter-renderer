@@ -25,7 +25,7 @@ export default defineConfig({
     },
 
     server: {
-        open: '/examples/example02.html',
+        open: '/examples/',
     },
 
     optimizeDeps: {

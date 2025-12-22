@@ -1,18 +1,15 @@
-import { OrbitControls } from "../node_modules/three/examples/jsm/controls/OrbitControls.js";
-import { STLLoader } from "../node_modules/three/examples/jsm/loaders/STLLoader.js";
+import * as THREE from 'three';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js';
+import { PlotterRenderer } from '../src/plotter-renderer.js';
 
-/** @typedef {import('../node_modules/three/build/three.module.js')} THREE */
+let camera, scene, renderer;
+let cameraControls;
+let focused = true; // Start focused for initial render
 
-var camera, scene, renderer;
-var cameraControls;
-var canvasWidth = window.innerWidth;
-var canvasHeight = window.innerHeight;
-var focused = false;
-
-window.onload = () => {
-  init();
-  render();
-};
+// ES modules are deferred, run immediately
+init();
+render();
 
 window.onblur = () => {
   focused = false;
@@ -47,72 +44,65 @@ window.onkeypress = (e) => {
 };
 
 function init() {
-
-  var view = document.getElementById("view");
-  var container = document.getElementById("plot");
+  const view = document.getElementById("view");
+  const container = document.getElementById("plot");
 
   // CAMERA
   camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 1, 8000);
   camera.position.set(900, 900, 900);
 
   // RENDERER
-  renderer = new THREE.PlotterRenderer();
-
-  renderer.setSize(canvasWidth, canvasHeight);
+  renderer = new PlotterRenderer();
+  renderer.setSize(window.innerWidth, window.innerHeight);
   container.appendChild(renderer.domElement);
 
   // EVENTS
   window.addEventListener("resize", onWindowResize, false);
 
   // CONTROLS
-  // @ts-ignore
   cameraControls = new OrbitControls(camera, view);
   cameraControls.zoomSpeed = 2;
 
-  // scene itself
+  // Scene
   scene = new THREE.Scene();
   scene.background = new THREE.Color(0xaaaaaa);
 
   const dirLight = new THREE.DirectionalLight(0xffffff, 0.75);
   dirLight.position.set(300, 300, 300);
-
   scene.add(dirLight);
 
   const dirLight2 = new THREE.DirectionalLight(0x333333, 0.75);
   dirLight2.position.set(-100, 300, -500);
-
   scene.add(dirLight2);
 
   const light = new THREE.PointLight(0xffffff, 1.0, 5000);
   light.position.x = 300;
   light.position.z = 600;
   light.position.y = 1000;
-
   camera.add(light);
-
   scene.add(camera);
 
   // GUI
   setupGui();
-  
-  var loader = new STLLoader()
-  loader.load("./models/example01.stl", function (bg) {
-    let geom = new THREE.Geometry().fromBufferGeometry(bg);
-    let obj = new THREE.Mesh(geom, new THREE.MeshPhongMaterial())
-    scene.add(obj);
+
+  // Load model
+  const loader = new STLLoader();
+  loader.load("./models/example01.stl", function (geometry) {
+    const mesh = new THREE.Mesh(geometry, new THREE.MeshPhongMaterial());
+    scene.add(mesh);
     renderer.render(scene, camera);
   });
 
-  var tick = function () {
+  const tick = function () {
     if (focused) {
       renderer.render(scene, camera);
     }
     requestAnimationFrame(tick);
   };
 
-  var optimizeTimeout = null;
+  let optimizeTimeout = null;
 
-  var setOptimize = function () {
+  const setOptimize = function () {
     clearTimeout(optimizeTimeout);
     optimizeTimeout = setTimeout(() => {
       renderer.doOptimize = true;
@@ -135,20 +125,17 @@ function init() {
   });
 
   tick();
-  //setOptimize();
 }
 
 function onWindowResize() {
   renderer.setSize(window.innerWidth, window.innerHeight);
-
-  camera.aspect = canvasWidth / canvasHeight;
+  camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
-
   render();
 }
 
 function setupGui() {
-  var exportButton = document.getElementById("exportsvg");
+  const exportButton = document.getElementById("exportsvg");
   exportButton.addEventListener("click", exportSVG);
 }
 
@@ -170,6 +157,6 @@ function saveString(text, filename) {
   save(new Blob([text], { type: "text/plain" }), filename);
 }
 
-var link = document.createElement("a");
+const link = document.createElement("a");
 link.style.display = "none";
 document.body.appendChild(link);
