@@ -1,55 +1,156 @@
 # three-plotter-renderer
-An SVG renderer with occlusion for plotters and SVG editors
 
-**This package is a WIP: Try loading examples with a live development server.**
+[![npm version](https://img.shields.io/npm/v/three-plotter-renderer.svg)](https://www.npmjs.com/package/three-plotter-renderer)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-<img src="./examples/output/example02.png" width="50%">
+An SVG renderer for Three.js with hidden line removal - designed for pen plotters and laser cutters.
+
+<img src="./examples/output/example02.png" width="60%" alt="Example render showing a 3D model converted to plottable SVG">
+
+## Features
+
+- 🎨 **Hidden line removal** - Occlusion-aware rendering produces clean, plottable output
+- 📐 **Multi-layer SVG output** - Separate layers for edges, outlines, and hatching
+- 🖊️ **Plotter-optimized** - Path optimization for efficient pen/laser movement
+- 🔧 **Adjustable hatching** - Real-time control over shading patterns
+- 📦 **Inkscape compatible** - Exports with proper layer structure
+
+## Quick Start
+
+```bash
+npm install three-plotter-renderer three
+```
+
+```javascript
+import * as THREE from 'three';
+import { PlotterRenderer } from 'three-plotter-renderer';
+
+const renderer = new PlotterRenderer();
+renderer.setSize(window.innerWidth, window.innerHeight);
+document.body.appendChild(renderer.domElement);
+
+// After setting up your scene and camera:
+renderer.render(scene, camera);
+```
+
+## Development
+
+```bash
+git clone https://github.com/neurofuzzy/three-plotter-renderer.git
+cd three-plotter-renderer
+npm install
+npm run dev     # Start dev server with hot reload
+npm run build   # Build for production
+npm run test    # Run tests
+```
+
+Open http://localhost:5173/examples/example02.html to see the demo.
 
 ## Usage
 
-This _should_ be as simple as including `../dist/three-plotter-renderer.js` as a script in the head of your HTML document _after_ your *three.js* script include.
+### Basic Setup
 
-NOTE: This is a WIP and this will eventually be packaged for easy install in your projects.
+The renderer works like Three.js's built-in renderers:
 
-## Examples
+```javascript
+import * as THREE from 'three';
+import { PlotterRenderer } from 'three-plotter-renderer';
 
-The examples demonstrate usage of the packaged renderer in the `./dist` directory. Please note it must be added _after_ including `three.min.js`
-Please check the `./examples` folder and make sure they work for you.
+const renderer = new PlotterRenderer();
+renderer.setSize(800, 600);
+document.getElementById('container').appendChild(renderer.domElement);
 
-Examples use an OrbitController and start unoccluded. More complex models take time and you may see a blank screen for a few seconds.
+// Create scene, camera, and mesh as usual
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(45, 800/600, 1, 1000);
+camera.position.set(100, 100, 100);
 
-## Usage as module
+const geometry = new THREE.BoxGeometry(50, 50, 50);
+const material = new THREE.MeshPhongMaterial();
+const mesh = new THREE.Mesh(geometry, material);
+scene.add(mesh);
 
-The `./tests` directory demonstrates usage as a module. Importing `./src/three-plotter-renderer.js` should work as long as you've also installed and imported `three` and `js-angusjs-clipper` as modules.
+// Render
+renderer.render(scene, camera);
+```
 
-## Model types
+### Triggering Optimized Render
 
-The renderer works best with CSG models. It _does not_ support intersecting faces (touching is fine). Also, avoid stretched faces, and use multiple height/width/depth segments to get your faces as square as possible to prevent depth-fighting.
+The renderer has two modes:
+1. **Wireframe mode** - Fast preview while interacting
+2. **Optimized mode** - Full occlusion and hatching (set `renderer.doOptimize = true`)
 
-## Adjusting hatching
+```javascript
+// After camera stops moving, trigger optimized render:
+renderer.doOptimize = true;
+renderer.render(scene, camera);
+```
 
-If you follow the examples you can adjust hatching after rendering by using the <,> keys to switch groups, the \[,\] keys to adjust rotation, and the -,= keys to adjust spacing
+### Keyboard Controls (in examples)
 
-## Layers
+| Key | Action |
+|-----|--------|
+| `,` / `.` | Switch hatch groups |
+| `[` / `]` | Adjust rotation |
+| `-` / `=` | Adjust spacing |
 
-The renderer will export an _edges_, _outline_, and _shading_ layer, as well as a hidden _polygons_ layer for use in Inkscape. These layers are only Inkscape-compatible and will come in as groups in other programs.
+### Exporting SVG
 
----
+```javascript
+const svgContent = document.getElementById('container').innerHTML;
+// Save svgContent to file
+```
 
-## How it works
+## Model Guidelines
 
-This renderer leverages the _projector.js_ module from _SVGRenderer_ to get a projected scene as an array of faces sorted by depth. The renderer then takes the faces and does the following:
+For best results:
 
-1. Put each face in a group of faces with the same normal and depth (distance from 0,0,0 world position)
-2. For each face, in order of depth, from back to front, union the projected polygon to the accumulated faces in that normal group.
-3. For that face, _subtract_ the projected polygon from all other normal groups.
-4. Finally, _union_ that face to the _outline_ group.
-5. Proceed to the next-closest face and repeat from step 2.
+- ✅ Use CSG (Constructive Solid Geometry) models
+- ✅ Keep faces as square as possible (use multiple segments)
+- ❌ Avoid intersecting faces (touching is fine)
+- ❌ Avoid extremely stretched faces
 
-You will end up with a set of polygons, each matching a planar section of your model. They will all fit together exactly, since they all were assembled from the same set of faces, just with different logic.
+## SVG Layers
 
----
+The exported SVG contains these layers (Inkscape-compatible):
 
-## Contributions welcome!
+| Layer | Description |
+|-------|-------------|
+| `outline_layer` | Silhouette outline |
+| `edges_layer` | Visible edges |
+| `shading_layer` | Hatching patterns |
+| `polygons_layer` | Face polygons (hidden) |
 
-There are a lot of developers out there who are smarter than me. I hope you can help me make this faster and more versatile!
+## How It Works
+
+1. Project scene faces using Three.js Projector
+2. Group faces by normal direction and depth
+3. For each face (back to front):
+   - Union to its normal group
+   - Subtract from all other groups
+   - Union to outline group
+4. Apply hatching based on lighting
+5. Optimize path order for plotting
+
+## API
+
+### PlotterRenderer
+
+```typescript
+class PlotterRenderer {
+  domElement: SVGElement;
+  doOptimize: boolean;
+  
+  setSize(width: number, height: number): void;
+  render(scene: THREE.Scene, camera: THREE.Camera): void;
+  setClearColor(color: THREE.Color): void;
+}
+```
+
+## Contributing
+
+Contributions are welcome! Please see [CONTRIBUTING.md](./CONTRIBUTING.md) for guidelines.
+
+## License
+
+MIT © [Geoff Gaudreault](https://github.com/neurofuzzy)
