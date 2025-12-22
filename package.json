@@ -17,8 +17,9 @@
   ],
   "sideEffects": false,
   "scripts": {
+    "build:wasm": "cd wasm/geometry-wasm && wasm-pack build --target web --out-dir ../../src/wasm-pkg",
     "dev": "vite",
-    "build": "vite build",
+    "build": "npm run build:wasm && vite build",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
