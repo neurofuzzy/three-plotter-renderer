@@ -1,11 +1,26 @@
 {
   "name": "three-plotter-renderer",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "An SVG renderer with occlusion for plotters and SVG editors",
-  "main": "dist/three-plotter-renderer.js",
-  "module": "src/plotter-renderer.js",
+  "type": "module",
+  "main": "dist/three-plotter-renderer.umd.js",
+  "module": "dist/three-plotter-renderer.es.js",
+  "exports": {
+    ".": {
+      "import": "./dist/three-plotter-renderer.es.js",
+      "require": "./dist/three-plotter-renderer.umd.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
   "scripts": {
-    "build": "NODE_ENV=npm parcel build ./src/three-plotter-renderer.js --no-source-maps"
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "repository": {
     "type": "git",
@@ -24,13 +39,15 @@
     "url": "https://github.com/neurofuzzy/three-plotter-renderer/issues"
   },
   "homepage": "https://github.com/neurofuzzy/three-plotter-renderer#readme",
-  "externals": "./externals.js",
   "devDependencies": {
-    "parcel-bundler": "^1.12.4",
-    "parcel-plugin-externals": "^0.5.1"
+    "vite": "^5.0.0",
+    "vitest": "^1.0.0"
   },
   "dependencies": {
     "js-angusj-clipper": "^1.1.0",
-    "three": "^0.120.1"
+    "three": "^0.160.0"
+  },
+  "peerDependencies": {
+    "three": ">=0.120.0"
   }
 }

@@ -1,7 +1,7 @@
-import { OrbitControls } from "../node_modules/three/examples/jsm/controls/OrbitControls.js";
-import { STLLoader } from "../node_modules/three/examples/jsm/loaders/STLLoader.js";
-
-/** @typedef {import('../node_modules/three/build/three.module.js')} THREE */
+import * as THREE from 'three';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js';
+import { PlotterRenderer } from '../src/plotter-renderer.js';
 
 var camera, scene, renderer;
 var cameraControls;
@@ -9,10 +9,9 @@ var canvasWidth = window.innerWidth;
 var canvasHeight = window.innerHeight;
 var focused = false;
 
-window.onload = () => {
-  init();
-  render();
-};
+// ES modules are deferred, so document is already ready when this runs
+init();
+render();
 
 window.onblur = () => {
   focused = false;
@@ -56,7 +55,7 @@ function init() {
   camera.position.set(900, 900, 900);
 
   // RENDERER
-  renderer = new THREE.PlotterRenderer();
+  renderer = new PlotterRenderer();
 
   renderer.setSize(canvasWidth, canvasHeight);
   container.appendChild(renderer.domElement);
@@ -65,7 +64,6 @@ function init() {
   window.addEventListener("resize", onWindowResize, false);
 
   // CONTROLS
-  // @ts-ignore
   cameraControls = new OrbitControls(camera, view);
   cameraControls.zoomSpeed = 2;
 
@@ -94,11 +92,11 @@ function init() {
 
   // GUI
   setupGui();
-  
-  var loader = new STLLoader()
-  loader.load("./models/example02.stl", function (bg) {
-    let geom = new THREE.Geometry().fromBufferGeometry(bg);
-    let obj = new THREE.Mesh(geom, new THREE.MeshPhongMaterial())
+
+  var loader = new STLLoader();
+  loader.load("./models/example02.stl", function (geometry) {
+    // STLLoader returns BufferGeometry directly in modern Three.js
+    let obj = new THREE.Mesh(geometry, new THREE.MeshPhongMaterial());
     scene.add(obj);
     renderer.render(scene, camera);
   });
