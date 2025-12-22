@@ -428,7 +428,9 @@ var Projector = function () {
 		_renderData.elements.length = 0;
 
 		if (scene.autoUpdate === true) scene.updateMatrixWorld();
-		if (camera.parent === null) camera.updateMatrixWorld();
+		// Always update camera matrices - needed for OrbitControls to work
+		camera.updateMatrixWorld();
+		camera.updateProjectionMatrix();
 
 		_viewMatrix.copy(camera.matrixWorldInverse);
 		_viewProjectionMatrix.multiplyMatrices(camera.projectionMatrix, _viewMatrix);

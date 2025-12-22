@@ -7,7 +7,7 @@ var camera, scene, renderer;
 var cameraControls;
 var canvasWidth = window.innerWidth;
 var canvasHeight = window.innerHeight;
-var focused = false;
+var focused = true; // Start focused so we get initial render
 
 // ES modules are deferred, so document is already ready when this runs
 init();
@@ -95,9 +95,19 @@ function init() {
 
   var loader = new STLLoader();
   loader.load("./models/example02.stl", function (geometry) {
-    // STLLoader returns BufferGeometry directly in modern Three.js
+    // Center the geometry so rotation is around its center
+    geometry.computeBoundingBox();
+    geometry.center();
+
     let obj = new THREE.Mesh(geometry, new THREE.MeshPhongMaterial());
     scene.add(obj);
+
+    // Set camera to look at center (where model now is)
+    camera.lookAt(0, 0, 0);
+    cameraControls.target.set(0, 0, 0);
+    cameraControls.update();
+
+    // Initial render after model loads
     renderer.render(scene, camera);
   });
 
@@ -137,7 +147,10 @@ function init() {
 }
 
 function onWindowResize() {
-  renderer.setSize(window.innerWidth, window.innerHeight);
+  canvasWidth = window.innerWidth;
+  canvasHeight = window.innerHeight;
+
+  renderer.setSize(canvasWidth, canvasHeight);
 
   camera.aspect = canvasWidth / canvasHeight;
   camera.updateProjectionMatrix();

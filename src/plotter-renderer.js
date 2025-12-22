@@ -3,7 +3,7 @@
  */
 
 import { Box2, Camera, Color, Matrix3, Matrix4, Object3D, Vector3 } from "three";
-import { Projector, RenderableFace} from "./projector.js";
+import { Projector, RenderableFace } from "./projector.js";
 import { GeomUtil, Point, Segment } from "./geom/geom.js";
 import { Optimize } from "./optimize.js";
 import { BooleanShape } from "./geom/booleanshape.js";
@@ -16,8 +16,8 @@ var lop = (n) => {
 };
 
 var defaultSpacings = [
-  4, 6, 8, 10, 12, 14, 
-  16, 18, 20, 22, 24, 26, 
+  4, 6, 8, 10, 12, 14,
+  16, 18, 20, 22, 24, 26,
   28, 30, 32, 34, 36, 40,
 ];
 var defaultRotations = [
@@ -146,7 +146,7 @@ var PlotterRenderer = function () {
     _clearColor.set(color);
   };
 
-  this.setPixelRatio = function () {};
+  this.setPixelRatio = function () { };
 
   this.setSize = function (width, height) {
     _svgWidth = width;
@@ -224,10 +224,10 @@ var PlotterRenderer = function () {
       segs = this._cache.segs;
       faces = this._cache.faces;
       useCache = true;
-    
-    // start caching 
+
+      // start caching 
     } else if (this.doOptimize) {
-    
+
       this._cachekey = cacheKey;
       this._cache.segs = segs;
       this._cache.faces = faces;
@@ -244,7 +244,7 @@ var PlotterRenderer = function () {
       this._cache.hatchGroupFaceTotals = {};
       this._cache.currentHatchGroup = 0;
 
-    // not in optimize mode (user is moving camera)
+      // not in optimize mode (user is moving camera)
     } else {
       this._cachekey = "";
     }
@@ -273,6 +273,7 @@ var PlotterRenderer = function () {
 
       _elements = _renderData.elements;
       _lights = _renderData.lights;
+
 
       _normalViewMatrix.getNormalMatrix(camera.matrixWorldInverse);
 
@@ -508,11 +509,11 @@ var PlotterRenderer = function () {
 
         this._cache.shaded = true;
         let totalGroups = 0;
-        
+
         for (let g in this._cache.hatchGroupLums) {
           totalGroups++;
         }
-        
+
         if (totalGroups < this._cache.rotations.length) {
           this._cache.rotations = this._cache.rotations.slice(0, totalGroups);
           this._cache.spacings = this._cache.spacings.slice(0, totalGroups);
@@ -549,7 +550,7 @@ var PlotterRenderer = function () {
         console.log("segments before optimization:", segs.length);
         segs = Optimize.segments(segs, false, true, 1, true)._segments;
         console.log("segments after optimization:", segs.length);
-        
+
         // draw the optimized edges to the edges layer
 
         let pointsStr = "";
@@ -768,7 +769,7 @@ var PlotterRenderer = function () {
       element,
       material,
     });
-  
+
     segs.push({
       a: {
         x: convert(v3.positionScreen.x),
@@ -783,7 +784,7 @@ var PlotterRenderer = function () {
       element,
       material,
     });
-    
+
   }
 
   // wireframe path rendering
@@ -831,7 +832,7 @@ var PlotterRenderer = function () {
   }
 
   // interactive hatch editing
-  
+
   this.nextHatchGroup = function () {
     _cache.currentHatchGroup++;
     _cache.currentHatchGroup %= _cache.rotations.length;
