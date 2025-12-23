@@ -261,7 +261,9 @@ export function projectEdges(edges, camera, width, height) {
         visible: true,
         faceIdx: edge.faceIdx1,
         faceIdx2: edge.faceIdx2,
-        mesh: edge.mesh
+        mesh: edge.mesh,
+        normal1: edge.normal1,  // Propagate normals for straggler detection
+        normal2: edge.normal2
     }));
 }
 
@@ -912,6 +914,74 @@ function pointInTriangle2D(p, a, b, c) {
 }
 
 /**
+ * Check if edge lies along a face edge (collinear and within)
+ * @param {Vector2} edgeA - Edge start point
+ * @param {Vector2} edgeB - Edge end point
+ * @param {Vector2} faceEdgeA - Face edge start point
+ * @param {Vector2} faceEdgeB - Face edge end point
+ * @param {number} tolerance - Distance tolerance in pixels
+ * @returns {boolean}
+ */
+function edgeLiesAlongFaceEdge(edgeA, edgeB, faceEdgeA, faceEdgeB, tolerance = 2.0) {
+    // Get face edge direction and length
+    const dx = faceEdgeB.x - faceEdgeA.x;
+    const dy = faceEdgeB.y - faceEdgeA.y;
+    const lenSq = dx * dx + dy * dy;
+    if (lenSq < 1e-10) return false;  // Degenerate face edge
+
+    // Project edge endpoints onto face edge line
+    const projectAndCheck = (p) => {
+        // Project p onto line defined by faceEdgeA->faceEdgeB
+        const t = ((p.x - faceEdgeA.x) * dx + (p.y - faceEdgeA.y) * dy) / lenSq;
+
+        // Projected point
+        const projX = faceEdgeA.x + t * dx;
+        const projY = faceEdgeA.y + t * dy;
+
+        // Distance from p to projected point
+        const distSq = (p.x - projX) * (p.x - projX) + (p.y - projY) * (p.y - projY);
+
+        // Check if close to line and within segment (with small margin)
+        return distSq < tolerance * tolerance && t >= -0.01 && t <= 1.01;
+    };
+
+    // Both edge endpoints must lie along the face edge
+    return projectAndCheck(edgeA) && projectAndCheck(edgeB);
+}
+
+/**
+ * Find all faces adjacent to an edge geometrically
+ * @param {Object} edge - Edge with a, b (2D points)
+ * @param {Object[]} projectedFaces - Array of projected faces
+ * @returns {Object[]} - Array of matching faces with match type
+ */
+export function findAdjacentFaces(edge, projectedFaces) {
+    const results = [];
+
+    for (const face of projectedFaces) {
+        // Get the three edges of the face
+        const faceEdges = [
+            { a: face.a2d, b: face.b2d, name: 'AB' },
+            { a: face.b2d, b: face.c2d, name: 'BC' },
+            { a: face.c2d, b: face.a2d, name: 'CA' }
+        ];
+
+        for (const fe of faceEdges) {
+            if (edgeLiesAlongFaceEdge(edge.a, edge.b, fe.a, fe.b)) {
+                results.push({
+                    face,
+                    matchedEdge: fe.name,
+                    matchType: 'collinear'
+                });
+                break;  // Found a match for this face, move to next
+            }
+        }
+    }
+
+    return results;
+}
+
+/**
  * Compute depth at point inside triangle using barycentric interpolation
  * @param {Vector2} p - Point to compute depth at
  * @param {Vector2} a - Triangle vertex A (2D)
@@ -1412,11 +1482,13 @@ export function computeHiddenLinesMultiple(meshes, camera, scene, options = {}) 
     console.timeEnd('buildProjectedFaces');
     console.log(`Built ${projectedFaces.length} projected faces for occlusion`);
 
-    // Post-split smooth filter: remove straggler edges on coplanar faces
+    // Post-split smooth filter: DISABLED for debugging
+    // TODO: Re-enable once we figure out proper straggler detection
     console.time('filterSmoothSplitEdges');
-    const smoothFilteredEdges = filterSmoothSplitEdges(splitEdges, projectedFaces, smoothThreshold);
+    // const smoothFilteredEdges = filterSmoothSplitEdges(splitEdges, projectedFaces, smoothThreshold);
+    const smoothFilteredEdges = splitEdges;  // BYPASS for debugging
     console.timeEnd('filterSmoothSplitEdges');
-    console.log(`After post-split smooth filter: ${smoothFilteredEdges.length} edges`);
+    console.log(`After post-split smooth filter: ${smoothFilteredEdges.length} edges (FILTER DISABLED)`);
 
     // Occlusion using pure math
     let visibleEdges;
@@ -1436,6 +1508,7 @@ export function computeHiddenLinesMultiple(meshes, camera, scene, options = {}) 
     return {
         edges: finalEdges,
         profiles: finalEdges.filter(e => e.isProfile),
-        allEdges: splitEdges // For debug visualization
+        allEdges: splitEdges, // For debug visualization
+        projectedFaces: projectedFaces  // For face visualization
     };
 }

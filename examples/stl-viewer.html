@@ -54,7 +54,7 @@
         import * as THREE from 'three';
         import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
         import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js';
-        import { computeHiddenLinesMultiple } from '../src/hidden-line.js';
+        import { computeHiddenLinesMultiple, findAdjacentFaces } from '../src/hidden-line.js';
 
         let scene, camera, renderer, controls, mesh;
 
@@ -155,12 +155,47 @@
                     `Rendered ${result.edges.length} visible / ${result.allEdges?.length || 0} total edges in ${elapsed.toFixed(0)}ms`;
 
                 drawToSVG(result.edges, result.allEdges);
+
+                // Expose edges globally for console debugging
+                window.stragglersDebug = {
+                    edges: result.edges,
+                    projectedFaces: result.projectedFaces || [],  // For face visualization
+                    tJunctionEdges: result.edges.filter(e => e.isTJunctionStraggler),
+                    normalEdges: result.edges.filter(e => !e.isTJunctionStraggler),
+                    selected: new Set(),
+
+                    // Mark selected edges as actual stragglers
+                    markSelectedAsStragglers: function () {
+                        const realStragglers = this.tJunctionEdges.filter((_, i) => this.selected.has(i));
+                        const falseStragglers = this.tJunctionEdges.filter((_, i) => !this.selected.has(i));
+                        console.log('Real stragglers:', realStragglers.length);
+                        console.log('False positives:', falseStragglers.length);
+                        return { realStragglers, falseStragglers };
+                    },
+
+                    // Get edge info
+                    getEdgeInfo: function (idx) {
+                        const e = this.tJunctionEdges[idx];
+                        return {
+                            idx,
+                            faceIdx: e.faceIdx,
+                            mesh: e.mesh?.name,
+                            normal1: e.normal1 ? [e.normal1.x, e.normal1.y, e.normal1.z] : null,
+                            length: Math.sqrt((e.b.x - e.a.x) ** 2 + (e.b.y - e.a.y) ** 2)
+                        };
+                    }
+                };
+                console.log('Debug: window.stragglersDebug available');
+                console.log('T-junction edges:', window.stragglersDebug.tJunctionEdges.length);
+                console.log('Click red edges to toggle selection (cyan = selected)');
+                console.log('Call window.stragglersDebug.markSelectedAsStragglers() when done');
             }, 50);
         }
 
         function drawToSVG(edges, allEdges) {
             const svg = document.getElementById('svg-overlay');
             svg.innerHTML = '';
+            svg.style.pointerEvents = 'auto';  // Enable clicks
 
             const halfWidth = window.innerWidth / 2;
             const halfHeight = window.innerHeight / 2;
@@ -205,41 +240,106 @@
                 path.setAttribute('fill', 'none');
                 svg.appendChild(path);
             } else {
-                // NORMAL MODE: Draw T-junction stragglers in RED, others in BLACK
-                let stragglersPathD = '';
-                let normalPathD = '';
+                // NORMAL MODE: All edges clickable, draw adjacent faces on click
 
+                // Create a group for face polygons (drawn first, behind edges)
+                const facesGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+                facesGroup.id = 'face-highlights';
+                svg.appendChild(facesGroup);
+
+                // Create edges group
+                const edgesGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+                edgesGroup.id = 'edges';
+                svg.appendChild(edgesGroup);
+
+                // Draw each edge as clickable line
+                let edgeIndex = 0;
                 for (const edge of edges) {
                     const x1 = edge.a.x + halfWidth;
                     const y1 = halfHeight + edge.a.y;
                     const x2 = edge.b.x + halfWidth;
                     const y2 = halfHeight + edge.b.y;
 
-                    if (edge.isTJunctionStraggler) {
-                        stragglersPathD += `M${x1},${y1}L${x2},${y2}`;
-                    } else {
-                        normalPathD += `M${x1},${y1}L${x2},${y2}`;
-                    }
-                }
+                    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                    line.setAttribute('x1', x1);
+                    line.setAttribute('y1', y1);
+                    line.setAttribute('x2', x2);
+                    line.setAttribute('y2', y2);
+                    line.setAttribute('stroke', edge.isTJunctionStraggler ? '#ff0000' : '#000000');
+                    line.setAttribute('stroke-width', edge.isTJunctionStraggler ? '3' : '1.5');
+                    line.setAttribute('data-idx', edgeIndex);
+                    line.style.cursor = 'pointer';
 
-                // Draw normal edges first (black)
-                if (normalPathD) {
-                    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-                    path.setAttribute('d', normalPathD);
-                    path.setAttribute('stroke', '#000000');
-                    path.setAttribute('stroke-width', '1.5');
-                    path.setAttribute('fill', 'none');
-                    svg.appendChild(path);
-                }
+                    // Click handler - show adjacent faces
+                    const edgeRef = edge;
+                    const idx = edgeIndex;
+                    line.addEventListener('click', (e) => {
+                        e.stopPropagation();
 
-                // Draw T-junction stragglers on top (red)
-                if (stragglersPathD) {
-                    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-                    path.setAttribute('d', stragglersPathD);
-                    path.setAttribute('stroke', '#ff0000');
-                    path.setAttribute('stroke-width', '2');
-                    path.setAttribute('fill', 'none');
-                    svg.appendChild(path);
+                        // Clear previous face highlights
+                        facesGroup.innerHTML = '';
+
+                        // Highlight clicked edge
+                        document.querySelectorAll('#edges line').forEach(l => {
+                            const origColor = l.getAttribute('data-original-color') || l.getAttribute('stroke');
+                            l.setAttribute('stroke', origColor);
+                        });
+                        line.setAttribute('data-original-color', line.getAttribute('stroke'));
+                        line.setAttribute('stroke', '#00ffff');
+
+                        // Get projected faces from debug object
+                        const projFaces = window.stragglersDebug?.projectedFaces || [];
+
+                        // Find ALL faces adjacent to this edge geometrically
+                        const adjacentFaces = findAdjacentFaces(edgeRef, projFaces);
+
+                        // Color palette for multiple faces
+                        const colors = [
+                            { fill: 'rgba(0, 255, 0, 0.3)', stroke: '#00ff00' },      // Green
+                            { fill: 'rgba(255, 0, 255, 0.3)', stroke: '#ff00ff' },    // Magenta
+                            { fill: 'rgba(255, 255, 0, 0.3)', stroke: '#ffff00' },    // Yellow
+                            { fill: 'rgba(0, 255, 255, 0.3)', stroke: '#00ffff' },    // Cyan
+                            { fill: 'rgba(255, 128, 0, 0.3)', stroke: '#ff8000' }     // Orange
+                        ];
+
+                        // Draw all matched faces
+                        adjacentFaces.forEach((match, i) => {
+                            const face = match.face;
+                            const color = colors[i % colors.length];
+
+                            const poly = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+                            const pts = [
+                                `${face.a2d.x + halfWidth},${halfHeight + face.a2d.y}`,
+                                `${face.b2d.x + halfWidth},${halfHeight + face.b2d.y}`,
+                                `${face.c2d.x + halfWidth},${halfHeight + face.c2d.y}`
+                            ].join(' ');
+                            poly.setAttribute('points', pts);
+                            poly.setAttribute('fill', color.fill);
+                            poly.setAttribute('stroke', color.stroke);
+                            poly.setAttribute('stroke-width', '2');
+                            facesGroup.appendChild(poly);
+                        });
+
+                        // Log edge info
+                        const n1 = edgeRef.normal1;
+                        const n2 = edgeRef.normal2;
+                        console.log(`--- Edge ${idx} ---`);
+                        console.log(`  isTJunctionStraggler: ${edgeRef.isTJunctionStraggler}`);
+                        console.log(`  Original faceIdx: ${edgeRef.faceIdx}, faceIdx2: ${edgeRef.faceIdx2 ?? 'none'}`);
+                        console.log(`  Geometric matches: ${adjacentFaces.length} faces found`);
+                        adjacentFaces.forEach((match, i) => {
+                            console.log(`    Face ${i}: faceIdx=${match.face.faceIdx}, edge=${match.matchedEdge}`);
+                        });
+                        console.log(`  normal1: ${n1 ? `[${n1.x.toFixed(3)}, ${n1.y.toFixed(3)}, ${n1.z.toFixed(3)}]` : 'MISSING'}`);
+                        console.log(`  normal2: ${n2 ? `[${n2.x.toFixed(3)}, ${n2.y.toFixed(3)}, ${n2.z.toFixed(3)}]` : 'none (boundary)'}`);
+                        if (n1 && n2) {
+                            const dot = n1.dot(n2);
+                            console.log(`  normal similarity: ${dot.toFixed(4)} (>0.99 = smooth)`);
+                        }
+                    });
+
+                    edgesGroup.appendChild(line);
+                    edgeIndex++;
                 }
             }
         }
