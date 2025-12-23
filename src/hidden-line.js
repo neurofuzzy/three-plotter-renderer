@@ -6,6 +6,8 @@
  * Uses spatial hashing and per-edge occlusion testing.
  */
 
+import { Optimize } from './optimize.js';
+
 import {
     Vector3,
     Vector2,
@@ -1058,7 +1060,6 @@ export function filterSmoothSplitEdges(edges, projectedFaces, coplanarThreshold 
                 } else {
                     distDiff = Math.abs(f1.constant + f2.constant);
                 }
-                console.log(distDiff)
 
                 if (similarity >= coplanarThreshold && distDiff < distanceThreshold) {
                     // Edge lies between exactly 2 coplanar faces - remove it
@@ -1902,16 +1903,36 @@ export function computeHiddenLinesMultiple(meshes, camera, scene, options = {}) 
 
     // Remove completely isolated edges (orphaned at both ends)
     const filteredEdges = removeIsolatedEdges(cleanedEdges);
-    console.log(`Final edges: ${filteredEdges.length}`);
+    console.log(`Final edges before optimization: ${filteredEdges.length}`);
+
+    // Run through Optimize.js
+    let optimizedFinal = filteredEdges;
+    if (filteredEdges.length > 0) {
+        let totalLen = 0;
+        for (const e of filteredEdges) {
+            const dx = e.b.x - e.a.x;
+            const dy = e.b.y - e.a.y;
+            totalLen += Math.sqrt(dx * dx + dy * dy);
+        }
+        const avgLen = totalLen / filteredEdges.length;
+        const smallDist = avgLen / 10;
+        console.log(`Optimization: avgLen=${avgLen.toFixed(2)}, trim limit=${smallDist.toFixed(2)}`);
+
+        console.time('Optimize.segments');
+        // @ts-ignore - _segments is private but we need the raw objects to preserve metadata
+        optimizedFinal = Optimize.segments(filteredEdges, false, true, smallDist, false, false, false)._segments;
+        console.timeEnd('Optimize.segments');
+        console.log(`After optimization: ${optimizedFinal.length} edges`);
+    }
 
     // Scale edges back down to original coordinate space
-    for (const edge of filteredEdges) {
+    for (const edge of optimizedFinal) {
         edge.a.x /= internalScale;
         edge.a.y /= internalScale;
         edge.b.x /= internalScale;
         edge.b.y /= internalScale;
     }
-    const finalEdges = filteredEdges;
+    const finalEdges = optimizedFinal;
 
     return {
         edges: finalEdges,
