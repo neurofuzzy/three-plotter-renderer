@@ -159,7 +159,7 @@
                 const result = computeHiddenLinesMultiple(meshes, camera, scene, {
                     smoothThreshold: 0.99,
                     gridSize: 32,
-                    skipOcclusion: true,  // DEBUG: Show ALL edges
+                    skipOcclusion: false,  // Enable occlusion testing
                     width: window.innerWidth,
                     height: window.innerHeight,
                     renderer: renderer
@@ -202,13 +202,7 @@
                 }
             }
 
-            // Draw visible edges - color by mesh for debugging
-            const meshColors = new Map([
-                [pyramid, '#ff6644'],    // Red-orange for pyramid
-                [cylinder, '#ff00ff'],   // Pink for cylinder
-                [sphere, '#ffaa00']      // Orange for icosahedron
-            ]);
-
+            // Draw visible edges - bright green
             for (const edge of edges) {
                 const x1 = edge.a.x + halfWidth;
                 const y1 = halfHeight + edge.a.y;
@@ -220,7 +214,7 @@
                 line.setAttribute('y1', y1);
                 line.setAttribute('x2', x2);
                 line.setAttribute('y2', y2);
-                line.setAttribute('stroke', meshColors.get(edge.mesh) || '#00ff00');
+                line.setAttribute('stroke', '#00ff00');  // Bright green for visible
                 line.setAttribute('stroke-width', '1.5');
                 svg.appendChild(line);
             }
