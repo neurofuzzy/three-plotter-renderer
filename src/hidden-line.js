@@ -6,7 +6,20 @@
  * Uses spatial hashing and per-edge occlusion testing.
  */
 
-import { Vector3, Vector2, Raycaster, Camera, Scene, Mesh } from "three";
+import {
+    Vector3,
+    Vector2,
+    Raycaster,
+    Camera,
+    Scene,
+    Mesh,
+    WebGLRenderTarget,
+    NearestFilter,
+    RGBAFormat,
+    UnsignedByteType,
+    MeshDepthMaterial,
+    RGBADepthPacking
+} from "three";
 
 /**
  * @typedef {Object} Edge3D
@@ -47,10 +60,23 @@ export function extractEdges(mesh) {
     /** @type {Map<string, Edge3D>} */
     const edgeMap = new Map();
 
-    const getEdgeKey = (ia, ib) => {
-        const min = Math.min(ia, ib);
-        const max = Math.max(ia, ib);
-        return `${min}-${max}`;
+    // Snap tolerance for position-based edge matching
+    const SNAP = 1000; // Precision: 3 decimal places
+
+    // Position-based edge key (not index-based, handles duplicate vertices)
+    const getEdgeKey = (va, vb) => {
+        const ax = Math.round(va.x * SNAP);
+        const ay = Math.round(va.y * SNAP);
+        const az = Math.round(va.z * SNAP);
+        const bx = Math.round(vb.x * SNAP);
+        const by = Math.round(vb.y * SNAP);
+        const bz = Math.round(vb.z * SNAP);
+
+        const keyA = `${ax},${ay},${az}`;
+        const keyB = `${bx},${by},${bz}`;
+
+        // Sort to ensure consistent ordering
+        return keyA < keyB ? `${keyA}|${keyB}` : `${keyB}|${keyA}`;
     };
 
     const getVertex = (idx) => {
@@ -89,19 +115,21 @@ export function extractEdges(mesh) {
 
         // Process three edges of the triangle
         const edges = [
-            [i0, i1, v0, v1],
-            [i1, i2, v1, v2],
-            [i2, i0, v2, v0]
+            [v0, v1],
+            [v1, v2],
+            [v2, v0]
         ];
 
-        for (const [ia, ib, va, vb] of edges) {
-            const key = getEdgeKey(ia, ib);
+        for (const [va, vb] of edges) {
+            const key = getEdgeKey(va, vb);
 
             if (edgeMap.has(key)) {
                 // Edge already exists - add second face normal
                 const existing = edgeMap.get(key);
-                existing.normal2 = normal.clone();
-                existing.faceIdx2 = f;
+                if (existing && !existing.normal2) {
+                    existing.normal2 = normal.clone();
+                    existing.faceIdx2 = f;
+                }
             } else {
                 edgeMap.set(key, {
                     a: va.clone(),
@@ -147,6 +175,12 @@ export function classifyEdges(edges, cameraPosition, smoothThreshold = 0.99) {
     const profiles = [];
     const smoothFiltered = [];
 
+    // Debug counters
+    let boundaryCount = 0;
+    let profileCount = 0;
+    let smoothCount = 0;
+    let discardedCount = 0;
+
     for (const edge of edges) {
         const edgeMidpoint = new Vector3().addVectors(edge.a, edge.b).multiplyScalar(0.5);
         const viewDir = new Vector3().subVectors(cameraPosition, edgeMidpoint).normalize();
@@ -163,10 +197,12 @@ export function classifyEdges(edges, cameraPosition, smoothThreshold = 0.99) {
         // Check if normals are similar (smooth shading edge)
         if (edge.normal2) {
             const similarity = edge.normal1.dot(edge.normal2);
+            // Keep edge only if normals are different enough (crease/hard edge)
+            // Filter out smooth edges where normals are nearly parallel
             if (similarity < smoothThreshold) {
                 smoothFiltered.push(edge);
             }
-            // Edges with similar normals are discarded (smooth surface)
+            // Edges with similar normals (similarity >= threshold) are discarded as smooth surface edges
         }
     }
 
@@ -405,7 +441,163 @@ export function splitAtIntersections(edges) {
 }
 
 /**
- * Test edge visibility using raycasting
+ * Test edge visibility using GPU depth buffer (fast O(1) per edge)
+ * Uses a render target with depth material to read depth as RGBA
+ * @param {Edge2D[]} edges 
+ * @param {Scene} scene 
+ * @param {Camera} camera 
+ * @param {number} epsilon - Depth tolerance (normalized 0-1)
+ * @param {number} width - Viewport width
+ * @param {number} height - Viewport height
+ * @param {any} renderer - THREE.WebGLRenderer instance
+ * @returns {Edge2D[]}
+ */
+export function testOcclusionDepthBuffer(edges, scene, camera, epsilon, width, height, renderer) {
+    const visibleEdges = [];
+
+    if (!renderer) {
+        console.warn('No renderer provided, skipping occlusion test');
+        return edges;
+    }
+
+    // Create render target for depth
+    const renderTarget = new WebGLRenderTarget(width, height, {
+        minFilter: NearestFilter,
+        magFilter: NearestFilter,
+        format: RGBAFormat,
+        type: UnsignedByteType
+    });
+
+    // Create depth material that encodes depth as color
+    const depthMaterial = new MeshDepthMaterial({
+        depthPacking: RGBADepthPacking
+    });
+
+    // Store original material overrides
+    const originalOverrideMaterial = scene.overrideMaterial;
+
+    // Render scene with depth material
+    scene.overrideMaterial = depthMaterial;
+    renderer.setRenderTarget(renderTarget);
+    renderer.render(scene, camera);
+
+    // Read the render target as RGBA
+    const depthData = new Uint8Array(width * height * 4);
+    renderer.readRenderTargetPixels(renderTarget, 0, 0, width, height, depthData);
+
+    // Restore scene
+    scene.overrideMaterial = originalOverrideMaterial;
+    renderer.setRenderTarget(null);
+
+    // Check if we got valid data
+    let hasData = false;
+    for (let i = 0; i < Math.min(4000, depthData.length); i += 4) {
+        if (depthData[i] !== 0 || depthData[i + 1] !== 0 || depthData[i + 2] !== 0) {
+            hasData = true;
+            break;
+        }
+    }
+
+    // Debug: sample center of depth buffer
+    const centerIdx = Math.floor(height / 2) * width * 4 + Math.floor(width / 2) * 4;
+    console.log(`Depth buffer center pixel (RGBA): ${depthData[centerIdx]}, ${depthData[centerIdx + 1]}, ${depthData[centerIdx + 2]}, ${depthData[centerIdx + 3]}`);
+
+    if (!hasData) {
+        console.warn('Could not read depth buffer, falling back to all-visible');
+        renderTarget.dispose();
+        depthMaterial.dispose();
+        return edges;
+    }
+
+    // Decode depth from RGBA using three.js formula
+    // See: https://github.com/mrdoob/three.js/blob/master/src/renderers/shaders/ShaderChunk/packing.glsl.js
+    // UnpackDownscale = 255/256
+    // UnpackFactors4 = (UnpackDownscale/1, UnpackDownscale/256, UnpackDownscale/65536, 1/16777216)
+    const UnpackDownscale = 255.0 / 256.0;
+    const PackFactors = [1.0, 256.0, 256.0 * 256.0, 256.0 * 256.0 * 256.0];
+    const UnpackFactors4 = [
+        UnpackDownscale / PackFactors[0],  // 0.99609375
+        UnpackDownscale / PackFactors[1],  // 0.00389099...
+        UnpackDownscale / PackFactors[2],  // 0.0000152...
+        1.0 / PackFactors[3]               // 0.0000000059...
+    ];
+
+    const unpackDepth = (r, g, b, a) => {
+        // Normalize from 0-255 to 0-1
+        const rn = r / 255.0;
+        const gn = g / 255.0;
+        const bn = b / 255.0;
+        const an = a / 255.0;
+        // dot product with UnpackFactors4
+        return rn * UnpackFactors4[0] + gn * UnpackFactors4[1] + bn * UnpackFactors4[2] + an * UnpackFactors4[3];
+    };
+
+    // @ts-ignore
+    const near = camera.near;
+    // @ts-ignore  
+    const far = camera.far;
+
+    // Debug: log first few depth comparisons
+    let debugCount = 0;
+
+    for (const edge of edges) {
+        // Get screen-space coordinates of edge midpoint
+        const midX = (edge.a.x + edge.b.x) / 2;
+        const midY = (edge.a.y + edge.b.y) / 2;
+
+        const sx = Math.round(midX + width / 2);
+        const sy = Math.round(height / 2 - midY); // Flip Y
+
+        // Check bounds
+        if (sx < 0 || sx >= width || sy < 0 || sy >= height) {
+            edge.visible = true;
+            visibleEdges.push(edge);
+            continue;
+        }
+
+        // Sample depth buffer (note: readRenderTargetPixels returns bottom-up)
+        const depthIdx = ((height - 1 - sy) * width + sx) * 4;
+        const sampledDepth = unpackDepth(
+            depthData[depthIdx],
+            depthData[depthIdx + 1],
+            depthData[depthIdx + 2],
+            depthData[depthIdx + 3]
+        );
+
+        // Compute expected depth of edge midpoint
+        // MeshDepthMaterial with RGBADepthPacking stores (distance - near) / (far - near)
+        // This is linear depth, not perspective depth
+        const midpoint3d = edge.midpoint3d;
+        const distanceToCamera = camera.position.distanceTo(midpoint3d);
+        const expectedDepth = (distanceToCamera - near) / (far - near);
+
+        // Debug logging
+        if (debugCount < 10) {
+            console.log(`Edge ${debugCount}: sample=${sampledDepth.toFixed(4)}, expected=${expectedDepth.toFixed(4)}, dist=${distanceToCamera.toFixed(0)}, diff=${(sampledDepth - expectedDepth).toFixed(6)}`);
+            debugCount++;
+        }
+
+        // Compare: edge is visible if sampled depth >= expected depth (within tolerance)
+        // sampledDepth is depth of closest surface at this pixel
+        // expectedDepth is depth of the edge
+        // Edge is visible if it's at or in front of (closer than) the sampled surface
+        const isVisible = Math.abs(sampledDepth - expectedDepth) < epsilon || sampledDepth >= expectedDepth - epsilon;
+
+        if (isVisible) {
+            edge.visible = true;
+            visibleEdges.push(edge);
+        }
+    }
+
+    // Cleanup
+    renderTarget.dispose();
+    depthMaterial.dispose();
+
+    return visibleEdges;
+}
+
+/**
+ * Test edge visibility using raycasting (slow fallback)
  * @param {Edge2D[]} edges 
  * @param {Scene} scene 
  * @param {Camera} camera 
@@ -449,17 +641,20 @@ export function testOcclusion(edges, scene, camera, epsilon = 0.05) {
             let occluded = false;
 
             for (const hit of intersects) {
-                // Skip hits on the same mesh as the edge (self-intersection)
-                if (hit.object === edge.mesh) {
-                    continue;
-                }
-
-                // Skip hits at or beyond the edge's depth (parent face)
+                // Skip hits at or beyond the edge's depth
                 if (hit.distance >= expectedDist - relEps) {
                     continue;
                 }
 
-                // Something from another mesh is in front of the edge
+                // For same-mesh hits, check if it's the edge's own face
+                if (hit.object === edge.mesh) {
+                    // Skip if this is the same face the edge belongs to
+                    if (hit.faceIndex === edge.faceIdx) {
+                        continue;
+                    }
+                }
+
+                // Something is in front of the edge - it's occluded
                 occluded = true;
                 break;
             }
@@ -518,16 +713,18 @@ export function optimizeEdges(edges, tolerance = 0.5) {
  * @param {boolean} [options.skipOcclusion] - Skip occlusion testing (debug mode)
  * @param {number} [options.width] - Viewport width
  * @param {number} [options.height] - Viewport height
+ * @param {any} [options.renderer] - THREE.WebGLRenderer for depth buffer occlusion (fast)
  * @returns {{edges: Edge2D[], profiles: Edge2D[]}}
  */
 export function computeHiddenLines(mesh, camera, scene, options = {}) {
     const {
         smoothThreshold = 0.99,
         gridSize = 32,
-        occlusionEpsilon = 0.05, // 5% of distance tolerance
+        occlusionEpsilon = 0.01, // 1% depth tolerance for depth buffer
         skipOcclusion = false,
         width = 800,
-        height = 600
+        height = 600,
+        renderer = null
     } = options;
 
     console.time('extractEdges');
@@ -583,10 +780,14 @@ export function computeHiddenLines(mesh, camera, scene, options = {}) {
     if (skipOcclusion) {
         console.log('Skipping occlusion test (debug mode)');
         visibleEdges = splitEdges;
+    } else if (renderer) {
+        console.time('testOcclusion (depth buffer)');
+        visibleEdges = testOcclusionDepthBuffer(splitEdges, scene, camera, occlusionEpsilon, width, height, renderer);
+        console.timeEnd('testOcclusion (depth buffer)');
     } else {
-        console.time('testOcclusion');
+        console.time('testOcclusion (raycaster - slow)');
         visibleEdges = testOcclusion(splitEdges, scene, camera, occlusionEpsilon);
-        console.timeEnd('testOcclusion');
+        console.timeEnd('testOcclusion (raycaster - slow)');
     }
     console.log(`Visible edges: ${visibleEdges.length}`);
 

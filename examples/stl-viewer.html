@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>STL Hidden Line Viewer</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: sans-serif;
+        }
+
+        #info {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 10px;
+            z-index: 100;
+        }
+
+        #info button {
+            padding: 8px 16px;
+            font-size: 14px;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        #svg-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            pointer-events: none;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="info">
+        <div>
+            <button id="renderBtn">Render Hidden Lines</button>
+            <button id="exportBtn">Export SVG</button>
+        </div>
+        <div id="stats">Use mouse to orbit, scroll to zoom</div>
+    </div>
+    <svg id="svg-overlay" xmlns="http://www.w3.org/2000/svg"></svg>
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+        import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js';
+        import { computeHiddenLines } from '../src/hidden-line.js';
+
+        let scene, camera, renderer, controls, mesh;
+
+        function init() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x222222);
+
+            camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 1, 8000);
+            camera.position.set(900, 900, 900);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+
+            controls = new OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+
+            // Lighting
+            const light = new THREE.DirectionalLight(0xffffff, 1);
+            light.position.set(300, 300, 300);
+            scene.add(light);
+            scene.add(new THREE.AmbientLight(0x404040));
+
+            // Load STL
+            const loader = new STLLoader();
+            loader.load('./models/example02.stl', (geometry) => {
+                geometry.computeBoundingBox();
+                geometry.center();
+
+                const material = new THREE.MeshPhongMaterial({
+                    color: 0x44aa88,
+                    transparent: true,
+                    opacity: 0.5
+                });
+                mesh = new THREE.Mesh(geometry, material);
+                scene.add(mesh);
+
+                document.getElementById('stats').textContent =
+                    `Loaded ${geometry.attributes.position.count / 3} triangles. Click "Render Hidden Lines" when ready.`;
+            });
+
+            // Setup SVG overlay
+            const svg = document.getElementById('svg-overlay');
+            svg.setAttribute('width', window.innerWidth);
+            svg.setAttribute('height', window.innerHeight);
+
+            // Event listeners
+            window.addEventListener('resize', onResize);
+            document.getElementById('renderBtn').addEventListener('click', computeAndDraw);
+            document.getElementById('exportBtn').addEventListener('click', exportSVG);
+
+            animate();
+        }
+
+        function onResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+
+            const svg = document.getElementById('svg-overlay');
+            svg.setAttribute('width', window.innerWidth);
+            svg.setAttribute('height', window.innerHeight);
+        }
+
+        function computeAndDraw() {
+            if (!mesh) {
+                alert('Model not loaded yet');
+                return;
+            }
+
+            document.getElementById('stats').textContent = 'Computing hidden lines...';
+
+            // Use setTimeout to allow UI to update
+            setTimeout(() => {
+                const startTime = performance.now();
+
+                mesh.updateMatrixWorld(true);
+
+                const result = computeHiddenLines(mesh, camera, scene, {
+                    smoothThreshold: 0.99,
+                    gridSize: 32,
+                    occlusionEpsilon: 0.01, // 1% depth tolerance
+                    skipOcclusion: false,
+                    width: window.innerWidth,
+                    height: window.innerHeight,
+                    renderer: renderer  // Pass renderer for GPU depth buffer occlusion
+                });
+
+                const elapsed = performance.now() - startTime;
+                document.getElementById('stats').textContent =
+                    `Rendered ${result.edges.length} edges in ${elapsed.toFixed(0)}ms`;
+
+                drawToSVG(result.edges);
+            }, 50);
+        }
+
+        function drawToSVG(edges) {
+            const svg = document.getElementById('svg-overlay');
+            svg.innerHTML = '';
+
+            const halfWidth = window.innerWidth / 2;
+            const halfHeight = window.innerHeight / 2;
+
+            let pathD = '';
+
+            for (const edge of edges) {
+                const x1 = edge.a.x + halfWidth;
+                const y1 = edge.a.y + halfHeight;
+                const x2 = edge.b.x + halfWidth;
+                const y2 = edge.b.y + halfHeight;
+
+                pathD += `M${x1},${y1}L${x2},${y2}`;
+            }
+
+            const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            path.setAttribute('d', pathD);
+            path.setAttribute('stroke', '#00ff00');
+            path.setAttribute('stroke-width', '1');
+            path.setAttribute('fill', 'none');
+            svg.appendChild(path);
+        }
+
+        function exportSVG() {
+            const svg = document.getElementById('svg-overlay');
+            const svgContent = svg.outerHTML;
+            const blob = new Blob([svgContent], { type: 'image/svg+xml' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'hidden-lines.svg';
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        init();
+    </script>
+</body>
+
+</html>

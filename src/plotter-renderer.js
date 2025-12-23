@@ -10,6 +10,7 @@ import { BooleanShape } from "./geom/booleanshape.js";
 import { PolygonShape } from "./geom/shapes.js";
 import { Expander } from "./expander.js";
 import { Hatcher } from "./hatcher.js";
+import { computeHiddenLines } from "./hidden-line.js";
 
 var lop = (n) => {
   return Math.round(n * 100) / 100;
@@ -123,6 +124,7 @@ var PlotterRenderer = function () {
   this.autoClear = true;
   this.sortObjects = true;
   this.sortElements = true;
+  this.useEdgeAlgorithm = false; // Enable manually via "Render Hidden Lines" button
 
   this.info = {
     render: {
@@ -268,57 +270,152 @@ var PlotterRenderer = function () {
       _viewMatrix.copy(camera.matrixWorldInverse);
       _viewProjectionMatrix.multiplyMatrices(camera.projectionMatrix, _viewMatrix);
 
-      let r = _projector.projectScene(scene, camera, false, false);
-      _renderData = _projector.projectScene(scene, camera, this.sortObjects, this.sortElements);
+      // Use new edge-based algorithm (only when camera stops to avoid lag)
+      if (_this.useEdgeAlgorithm && _this.doOptimize) {
+        // reset accumulated path
+        _currentPath = "";
+        _currentStyle = "";
 
-      _elements = _renderData.elements;
-      _lights = _renderData.lights;
-
-
-      _normalViewMatrix.getNormalMatrix(camera.matrixWorldInverse);
-
-      // reset accumulated path
-
-      _currentPath = "";
-      _currentStyle = "";
-
-      for (var e = 0, el = _elements.length; e < el; e++) {
-        var element = _elements[e];
-        var material = element.material;
-
-        if (material === undefined || material.opacity === 0) continue;
-
-        _elemBox.makeEmpty();
-
-        if (element instanceof RenderableFace) {
-          _v1 = element.v1;
-          _v2 = element.v2;
-          _v3 = element.v3;
-
-          if (_v1.positionScreen.z < -1 || _v1.positionScreen.z > 1) continue;
-          if (_v2.positionScreen.z < -1 || _v2.positionScreen.z > 1) continue;
-          if (_v3.positionScreen.z < -1 || _v3.positionScreen.z > 1) continue;
-
-          _v1.positionScreen.x *= _svgWidthHalf;
-          _v1.positionScreen.y *= -_svgHeightHalf;
-          _v2.positionScreen.x *= _svgWidthHalf;
-          _v2.positionScreen.y *= -_svgHeightHalf;
-          _v3.positionScreen.x *= _svgWidthHalf;
-          _v3.positionScreen.y *= -_svgHeightHalf;
-
+        console.time('edge-algorithm');
+        // Process each mesh in scene with edge-based algorithm
+        scene.traverse((obj) => {
           // @ts-ignore
-          _elemBox.setFromPoints([_v1.positionScreen, _v2.positionScreen, _v3.positionScreen]);
+          if (obj.isMesh && obj.geometry) {
+            const result = computeHiddenLines(obj, camera, scene, {
+              smoothThreshold: 0.99,
+              occlusionEpsilon: 0.05,
+              skipOcclusion: true, // Skip slow raycasting for complex models
+              width: _svgWidth,
+              height: _svgHeight
+            });
 
-          if (_clipBox.intersectsBox(_elemBox) === true) {
-            renderFace3(
-              _v1,
-              _v2,
-              _v3,
-              element,
-              material,
-              segs,
-              faces,
-            );
+            // Convert Edge2D results to segments
+            // projectEdges already outputs SVG-compatible center-origin coords
+            for (const edge of result.edges) {
+              segs.push(new Segment(
+                new Point(edge.a.x, edge.a.y),
+                new Point(edge.b.x, edge.b.y)
+              ));
+            }
+          }
+        });
+        console.timeEnd('edge-algorithm');
+
+        // Render segments directly 
+        console.log('Rendering', segs.length, 'segments');
+        segs.forEach(seg => renderSegment(seg));
+        flushPath();
+        // Set flag to skip legacy shading path
+        useCache = true; // Prevent shading logic from running
+
+      } else if (_this.useEdgeAlgorithm && !_this.doOptimize) {
+        // During camera movement: use legacy projector for quick wireframe preview
+        let r = _projector.projectScene(scene, camera, false, false);
+        _renderData = _projector.projectScene(scene, camera, _this.sortObjects, _this.sortElements);
+
+        _elements = _renderData.elements;
+        _lights = _renderData.lights;
+
+        _normalViewMatrix.getNormalMatrix(camera.matrixWorldInverse);
+
+        _currentPath = "";
+        _currentStyle = "";
+
+        for (var e = 0, el = _elements.length; e < el; e++) {
+          var element = _elements[e];
+          var material = element.material;
+
+          if (material === undefined || material.opacity === 0) continue;
+
+          _elemBox.makeEmpty();
+
+          if (element instanceof RenderableFace) {
+            _v1 = element.v1;
+            _v2 = element.v2;
+            _v3 = element.v3;
+
+            if (_v1.positionScreen.z < -1 || _v1.positionScreen.z > 1) continue;
+            if (_v2.positionScreen.z < -1 || _v2.positionScreen.z > 1) continue;
+            if (_v3.positionScreen.z < -1 || _v3.positionScreen.z > 1) continue;
+
+            _v1.positionScreen.x *= _svgWidthHalf;
+            _v1.positionScreen.y *= -_svgHeightHalf;
+            _v2.positionScreen.x *= _svgWidthHalf;
+            _v2.positionScreen.y *= -_svgHeightHalf;
+            _v3.positionScreen.x *= _svgWidthHalf;
+            _v3.positionScreen.y *= -_svgHeightHalf;
+
+            // @ts-ignore
+            _elemBox.setFromPoints([_v1.positionScreen, _v2.positionScreen, _v3.positionScreen]);
+
+            if (_clipBox.intersectsBox(_elemBox) === true) {
+              renderFace3(
+                _v1,
+                _v2,
+                _v3,
+                element,
+                material,
+                segs,
+                faces,
+              );
+            }
+          }
+        }
+
+      } else {
+        // Legacy projector-based path
+        let r = _projector.projectScene(scene, camera, false, false);
+        _renderData = _projector.projectScene(scene, camera, this.sortObjects, this.sortElements);
+
+        _elements = _renderData.elements;
+        _lights = _renderData.lights;
+
+
+        _normalViewMatrix.getNormalMatrix(camera.matrixWorldInverse);
+
+        // reset accumulated path
+
+        _currentPath = "";
+        _currentStyle = "";
+
+        for (var e = 0, el = _elements.length; e < el; e++) {
+          var element = _elements[e];
+          var material = element.material;
+
+          if (material === undefined || material.opacity === 0) continue;
+
+          _elemBox.makeEmpty();
+
+          if (element instanceof RenderableFace) {
+            _v1 = element.v1;
+            _v2 = element.v2;
+            _v3 = element.v3;
+
+            if (_v1.positionScreen.z < -1 || _v1.positionScreen.z > 1) continue;
+            if (_v2.positionScreen.z < -1 || _v2.positionScreen.z > 1) continue;
+            if (_v3.positionScreen.z < -1 || _v3.positionScreen.z > 1) continue;
+
+            _v1.positionScreen.x *= _svgWidthHalf;
+            _v1.positionScreen.y *= -_svgHeightHalf;
+            _v2.positionScreen.x *= _svgWidthHalf;
+            _v2.positionScreen.y *= -_svgHeightHalf;
+            _v3.positionScreen.x *= _svgWidthHalf;
+            _v3.positionScreen.y *= -_svgHeightHalf;
+
+            // @ts-ignore
+            _elemBox.setFromPoints([_v1.positionScreen, _v2.positionScreen, _v3.positionScreen]);
+
+            if (_clipBox.intersectsBox(_elemBox) === true) {
+              renderFace3(
+                _v1,
+                _v2,
+                _v3,
+                element,
+                material,
+                segs,
+                faces,
+              );
+            }
           }
         }
       }

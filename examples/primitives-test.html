@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>Simple Primitives Hidden Line Test</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: sans-serif;
+        }
+
+        #info {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 10px;
+            z-index: 100;
+        }
+
+        #info button {
+            padding: 8px 16px;
+            font-size: 14px;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        #svg-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            pointer-events: none;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="info">
+        <div>
+            <button id="renderBtn">Render Hidden Lines</button>
+            <button id="exportBtn">Export SVG</button>
+        </div>
+        <div id="stats">Simple primitives: Pyramid, Cylinder, Icosahedron</div>
+    </div>
+    <svg id="svg-overlay" xmlns="http://www.w3.org/2000/svg"></svg>
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+        import { computeHiddenLines } from '../src/hidden-line.js';
+
+        let scene, camera, renderer, controls;
+        let pyramid, cylinder, sphere;
+
+        function init() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x222222);
+
+            camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(8, 6, 10);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+
+            controls = new OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+
+            // Lighting
+            const light = new THREE.DirectionalLight(0xffffff, 1);
+            light.position.set(5, 5, 5);
+            scene.add(light);
+            scene.add(new THREE.AmbientLight(0x404040));
+
+            // Materials - NOT transparent so depth writes properly
+            const material = new THREE.MeshPhongMaterial({
+                color: 0x44aa88,
+                transparent: false
+            });
+
+            // Pyramid (cone with 4 sides)
+            const pyramidGeom = new THREE.ConeGeometry(1.5, 2.5, 4);
+            pyramid = new THREE.Mesh(pyramidGeom, material.clone());
+            pyramid.material.color.set(0xff6644);
+            pyramid.position.set(-4, 1.25, 0);
+            scene.add(pyramid);
+
+            // 12-sided cylinder
+            const cylinderGeom = new THREE.CylinderGeometry(1, 1, 2.5, 12);
+            cylinder = new THREE.Mesh(cylinderGeom, material.clone());
+            cylinder.material.color.set(0x44ff66);
+            cylinder.position.set(0, 1.25, 0);
+            scene.add(cylinder);
+
+            // Icosahedron (close to geosphere)
+            const icoGeom = new THREE.IcosahedronGeometry(1.5, 0);
+            sphere = new THREE.Mesh(icoGeom, material.clone());
+            sphere.material.color.set(0x4466ff);
+            sphere.position.set(4, 1.5, 0);
+            scene.add(sphere);
+
+            // Floor grid for reference
+            const gridHelper = new THREE.GridHelper(20, 20, 0x444444, 0x333333);
+            scene.add(gridHelper);
+
+            // Setup SVG overlay
+            const svg = document.getElementById('svg-overlay');
+            svg.setAttribute('width', window.innerWidth);
+            svg.setAttribute('height', window.innerHeight);
+
+            // Log geometry stats
+            const totalTris = (pyramidGeom.index ? pyramidGeom.index.count / 3 : pyramidGeom.attributes.position.count / 3)
+                + (cylinderGeom.index ? cylinderGeom.index.count / 3 : cylinderGeom.attributes.position.count / 3)
+                + (icoGeom.index ? icoGeom.index.count / 3 : icoGeom.attributes.position.count / 3);
+            document.getElementById('stats').textContent = `Total triangles: ~${Math.round(totalTris)}. Click "Render Hidden Lines" when ready.`;
+
+            // Event listeners
+            window.addEventListener('resize', onResize);
+            document.getElementById('renderBtn').addEventListener('click', computeAndDraw);
+            document.getElementById('exportBtn').addEventListener('click', exportSVG);
+
+            animate();
+        }
+
+        function onResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+
+            const svg = document.getElementById('svg-overlay');
+            svg.setAttribute('width', window.innerWidth);
+            svg.setAttribute('height', window.innerHeight);
+        }
+
+        function computeAndDraw() {
+            document.getElementById('stats').textContent = 'Computing hidden lines...';
+
+            // Clear SVG
+            const svg = document.getElementById('svg-overlay');
+            svg.innerHTML = '';
+
+            setTimeout(() => {
+                const startTime = performance.now();
+
+                // Process each mesh separately
+                const allEdges = [];
+                const meshes = [pyramid, cylinder, sphere];
+
+                for (const mesh of meshes) {
+                    mesh.updateMatrixWorld(true);
+
+                    const result = computeHiddenLines(mesh, camera, scene, {
+                        smoothThreshold: 0.99,
+                        gridSize: 32,
+                        occlusionEpsilon: 0.02,
+                        skipOcclusion: false,
+                        width: window.innerWidth,
+                        height: window.innerHeight,
+                        renderer: renderer
+                    });
+
+                    allEdges.push(...result.edges);
+                }
+
+                const elapsed = performance.now() - startTime;
+                document.getElementById('stats').textContent =
+                    `Rendered ${allEdges.length} edges in ${elapsed.toFixed(0)}ms`;
+
+                drawToSVG(allEdges);
+            }, 50);
+        }
+
+        function drawToSVG(edges) {
+            const svg = document.getElementById('svg-overlay');
+            svg.innerHTML = '';
+
+            const halfWidth = window.innerWidth / 2;
+            const halfHeight = window.innerHeight / 2;
+
+            let pathD = '';
+
+            for (const edge of edges) {
+                const x1 = edge.a.x + halfWidth;
+                const y1 = halfHeight + edge.a.y;  // projectEdges already negates Y
+                const x2 = edge.b.x + halfWidth;
+                const y2 = halfHeight + edge.b.y;
+
+                pathD += `M${x1},${y1}L${x2},${y2}`;
+            }
+
+            const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            path.setAttribute('d', pathD);
+            path.setAttribute('stroke', '#00ff00');
+            path.setAttribute('stroke-width', '1.5');
+            path.setAttribute('fill', 'none');
+            svg.appendChild(path);
+        }
+
+        function exportSVG() {
+            const svg = document.getElementById('svg-overlay');
+            const svgContent = svg.outerHTML;
+            const blob = new Blob([svgContent], { type: 'image/svg+xml' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'primitives-hidden-lines.svg';
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        init();
+    </script>
+</body>
+
+</html>

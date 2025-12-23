@@ -159,8 +159,22 @@ function onWindowResize() {
 }
 
 function setupGui() {
-  var exportButton = document.getElementById("exportsvg");
+  const exportButton = document.getElementById("exportsvg");
   exportButton.addEventListener("click", exportSVG);
+
+  const renderHiddenBtn = document.getElementById("renderHidden");
+  renderHiddenBtn.addEventListener("click", renderHiddenLines);
+}
+
+function renderHiddenLines() {
+  console.log("Rendering hidden lines...");
+  // Enable edge algorithm and trigger optimized render
+  renderer.useEdgeAlgorithm = true;
+  renderer.doOptimize = true;
+  renderer.render(scene, camera);
+  // Disable for next orbit
+  renderer.useEdgeAlgorithm = false;
+  renderer.doOptimize = false;
 }
 
 function render() {
