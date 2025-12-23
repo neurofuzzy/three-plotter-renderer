@@ -36,6 +36,7 @@ import {
  * @property {number} faceIdx1 - First face index
  * @property {number} [faceIdx2] - Second face index
  * @property {Mesh} mesh - Parent mesh
+ * @property {boolean} [isHatch] - Is this a hatch line?
  */
 
 /**
@@ -49,6 +50,7 @@ import {
  * @property {boolean} visible - Is this edge visible?
  * @property {number} faceIdx - Parent face index
  * @property {Mesh} mesh - Parent mesh
+ * @property {boolean} [isHatch] - Is this a hatch line?
  */
 
 /**
@@ -265,6 +267,7 @@ export function projectEdges(edges, camera, width, height, scale = 1) {
         faceIdx: edge.faceIdx1,
         faceIdx2: edge.faceIdx2,
         mesh: edge.mesh,
+        isHatch: edge.isHatch,
         normal1: edge.normal1,  // Propagate normals for straggler detection
         normal2: edge.normal2
     }));
@@ -518,6 +521,7 @@ export function splitAtIntersections(edges) {
                 visible: edge.visible,
                 faceIdx: edge.faceIdx,
                 mesh: edge.mesh,
+                isHatch: edge.isHatch,
                 normal1: edge.normal1,  // Propagate normal for smooth filter
                 isTJunctionStraggler: isStraggler
             });
@@ -538,6 +542,7 @@ export function splitAtIntersections(edges) {
             visible: edge.visible,
             faceIdx: edge.faceIdx,
             mesh: edge.mesh,
+            isHatch: edge.isHatch,
             normal1: edge.normal1,  // Propagate normal for smooth filter
             isTJunctionStraggler: isStraggler
         });
@@ -1762,6 +1767,9 @@ export function computeHiddenLines(mesh, camera, scene, options = {}) {
  * @param {number} [options.width]
  * @param {number} [options.height]
  * @param {any} [options.renderer]
+ * @param {Edge3D[]} [options.hatchEdges] - Optional array of Edge3D objects for hatching
+ * @param {number} [options.internalScale] - Internal scale factor (default: 4)
+ * @param {number} [options.distanceThreshold] - Distance threshold for coplanar detection (default: 0.5)
  * @returns {{edges: Edge2D[], profiles: Edge2D[]}}
  */
 export function computeHiddenLinesMultiple(meshes, camera, scene, options = {}) {
@@ -1797,6 +1805,23 @@ export function computeHiddenLinesMultiple(meshes, camera, scene, options = {}) 
 
     // Project to 2D (with internal scale for precision)
     let edges2d = projectEdges(allEdges, camera, width, height, internalScale);
+
+    // Process additional hatch edges if provided
+    if (options.hatchEdges && options.hatchEdges.length > 0) {
+        console.log(`Processing ${options.hatchEdges.length} hatch edges...`);
+        // Filter backfacing hatch edges
+        const visibleHatch = filterBackfacing(options.hatchEdges, camera.position);
+
+        // Project
+        const hatch2d = projectEdges(visibleHatch, camera, width, height, internalScale);
+
+        // Mark explicitly (in case projectEdges didn't catch it from source)
+        hatch2d.forEach(e => e.isHatch = true);
+
+        // Add to main list
+        edges2d.push(...hatch2d);
+        console.log(`Added ${hatch2d.length} visible hatch edges`);
+    }
 
     // Mark profile edges
     // Split all edges at intersections (direct O(n²) comparison - no spatial hash)
