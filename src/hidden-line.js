@@ -1255,6 +1255,318 @@ export function optimizeEdges(edges, tolerance = 0.5) {
 }
 
 /**
+ * Cleanup orphaned edges by extending to find intersections
+ * An orphaned endpoint is a vertex with only 1 connected edge
+ * Strategy: extend orphan edges and find line-line intersections
+ * @param {Edge2D[]} edges - Edges to clean up
+ * @param {number} tolerance - Distance tolerance for vertex matching
+ * @param {number} maxExtension - Maximum distance to extend an edge
+ * @returns {Edge2D[]}
+ */
+export function cleanupOrphanedEdges(edges, tolerance = 1.0, maxExtension = 50) {
+    // Build vertex -> edge connectivity map
+    const vertexKey = (p) => `${Math.round(p.x / tolerance)},${Math.round(p.y / tolerance)}`;
+
+    // Map of vertex hash -> { edges: [{edge, endpoint: 'a'|'b'}], point: Vector2 }
+    const vertices = new Map();
+
+    for (const edge of edges) {
+        for (const endpoint of ['a', 'b']) {
+            const p = edge[endpoint];
+            const key = vertexKey(p);
+            if (!vertices.has(key)) {
+                vertices.set(key, { edges: [], point: p.clone() });
+            }
+            vertices.get(key).edges.push({ edge, endpoint });
+        }
+    }
+
+    // Find orphaned endpoints (vertices with only 1 edge)
+    const orphans = [];
+    for (const [key, vertex] of vertices) {
+        if (vertex.edges.length === 1) {
+            const { edge, endpoint } = vertex.edges[0];
+            const orphanPoint = vertex.point;
+            const otherPoint = endpoint === 'a' ? edge.b : edge.a;
+
+            // Compute direction (from fixed end toward orphan end)
+            const dx = orphanPoint.x - otherPoint.x;
+            const dy = orphanPoint.y - otherPoint.y;
+            const len = Math.sqrt(dx * dx + dy * dy);
+            if (len < 0.001) continue;
+
+            orphans.push({
+                key,
+                edge,
+                endpoint,
+                point: orphanPoint,
+                otherPoint,
+                dirX: dx / len,
+                dirY: dy / len,
+                len
+            });
+        }
+    }
+
+    console.log(`Edge cleanup: found ${orphans.length} orphaned endpoints`);
+    if (orphans.length === 0) return edges;
+
+    // Line-line intersection helper
+    // Returns t values for intersection point on both lines, or null if parallel
+    const lineIntersection = (p1, d1, p2, d2) => {
+        const cross = d1.x * d2.y - d1.y * d2.x;
+        if (Math.abs(cross) < 0.0001) return null; // Parallel
+
+        const dx = p2.x - p1.x;
+        const dy = p2.y - p1.y;
+
+        const t1 = (dx * d2.y - dy * d2.x) / cross;
+        const t2 = (dx * d1.y - dy * d1.x) / cross;
+
+        return { t1, t2 };
+    };
+
+    let extensionsCount = 0;
+    const processed = new Set();
+
+    for (let i = 0; i < orphans.length; i++) {
+        const orphan = orphans[i];
+        if (processed.has(orphan.key)) continue;
+
+        let bestMatch = null;
+        let bestIntersection = null;
+        let bestDist = Infinity;
+
+        for (let j = 0; j < orphans.length; j++) {
+            if (i === j) continue;
+            const candidate = orphans[j];
+            if (processed.has(candidate.key)) continue;
+
+            // Check if candidate's orphan point is reasonably close
+            const dist = Math.sqrt(
+                (candidate.point.x - orphan.point.x) ** 2 +
+                (candidate.point.y - orphan.point.y) ** 2
+            );
+            if (dist > maxExtension * 2) continue;
+
+            // Extend both lines and find intersection
+            // orphan: starts at orphan.point, direction orphan.dirX/dirY
+            // candidate: starts at candidate.point, direction candidate.dirX/dirY
+            const result = lineIntersection(
+                { x: orphan.point.x, y: orphan.point.y },
+                { x: orphan.dirX, y: orphan.dirY },
+                { x: candidate.point.x, y: candidate.point.y },
+                { x: candidate.dirX, y: candidate.dirY }
+            );
+
+            if (!result) continue; // Parallel lines
+
+            // t1 > 0 means intersection is in forward direction from orphan
+            // t2 > 0 means intersection is in forward direction from candidate
+            // Both must be positive (extending, not backtracking)
+            if (result.t1 < -0.1 || result.t2 < -0.1) continue;
+            if (result.t1 > maxExtension || result.t2 > maxExtension) continue;
+
+            // Compute intersection point
+            const ix = orphan.point.x + result.t1 * orphan.dirX;
+            const iy = orphan.point.y + result.t1 * orphan.dirY;
+
+            // Prefer closer intersections
+            const intersectDist = result.t1 + result.t2;
+            if (intersectDist < bestDist) {
+                bestDist = intersectDist;
+                bestMatch = candidate;
+                bestIntersection = { x: ix, y: iy };
+            }
+        }
+
+        if (bestMatch && bestIntersection) {
+            // Check if extension would cross any other edges
+            // Check segment from orphan.point to intersection
+            const crosses1 = segmentCrossesEdges(
+                orphan.point,
+                bestIntersection,
+                edges,
+                orphan.edge,
+                bestMatch.edge
+            );
+            // Check segment from bestMatch.point to intersection
+            const crosses2 = segmentCrossesEdges(
+                bestMatch.point,
+                bestIntersection,
+                edges,
+                orphan.edge,
+                bestMatch.edge
+            );
+
+            if (crosses1 || crosses2) {
+                // Skip this extension - it would cross existing edges
+                continue;
+            }
+
+            // Extend both edges to meet at intersection point
+            if (orphan.endpoint === 'a') {
+                orphan.edge.a.x = bestIntersection.x;
+                orphan.edge.a.y = bestIntersection.y;
+            } else {
+                orphan.edge.b.x = bestIntersection.x;
+                orphan.edge.b.y = bestIntersection.y;
+            }
+
+            if (bestMatch.endpoint === 'a') {
+                bestMatch.edge.a.x = bestIntersection.x;
+                bestMatch.edge.a.y = bestIntersection.y;
+            } else {
+                bestMatch.edge.b.x = bestIntersection.x;
+                bestMatch.edge.b.y = bestIntersection.y;
+            }
+
+            processed.add(orphan.key);
+            processed.add(bestMatch.key);
+            extensionsCount++;
+        }
+    }
+
+    console.log(`Edge cleanup: extended ${extensionsCount} pairs of edges to intersections`);
+
+    // Calculate average edge length for threshold
+    let totalLength = 0;
+    for (const edge of edges) {
+        const dx = edge.b.x - edge.a.x;
+        const dy = edge.b.y - edge.a.y;
+        totalLength += Math.sqrt(dx * dx + dy * dy);
+    }
+    const avgEdgeLength = totalLength / edges.length;
+    const snapThreshold = avgEdgeLength / 8;
+
+    console.log(`Edge cleanup: average edge length = ${avgEdgeLength.toFixed(2)}, snap threshold = ${snapThreshold.toFixed(2)}`);
+
+    // Rebuild orphan list after extensions
+    const finalVertices = new Map();
+    for (const edge of edges) {
+        for (const endpoint of ['a', 'b']) {
+            const p = edge[endpoint];
+            const key = vertexKey(p);
+            if (!finalVertices.has(key)) {
+                finalVertices.set(key, { edges: [], point: p });
+            }
+            finalVertices.get(key).edges.push({ edge, endpoint });
+        }
+    }
+
+    // Find remaining orphans
+    const finalOrphans = [];
+    for (const [key, vertex] of finalVertices) {
+        if (vertex.edges.length === 1) {
+            finalOrphans.push({ key, ...vertex.edges[0], point: vertex.point });
+        }
+    }
+
+    console.log(`Edge cleanup: ${finalOrphans.length} orphaned endpoints before snap pass`);
+
+    // Snap nearby orphans together
+    let snapCount = 0;
+    const snapped = new Set();
+
+    for (let i = 0; i < finalOrphans.length; i++) {
+        const orphan = finalOrphans[i];
+        if (snapped.has(orphan.key)) continue;
+
+        let nearestOrphan = null;
+        let nearestDist = Infinity;
+
+        for (let j = 0; j < finalOrphans.length; j++) {
+            if (i === j) continue;
+            const candidate = finalOrphans[j];
+            if (snapped.has(candidate.key)) continue;
+
+            const dist = Math.sqrt(
+                (candidate.point.x - orphan.point.x) ** 2 +
+                (candidate.point.y - orphan.point.y) ** 2
+            );
+
+            if (dist < nearestDist) {
+                nearestDist = dist;
+                nearestOrphan = candidate;
+            }
+        }
+
+        if (nearestOrphan && nearestDist < snapThreshold) {
+            // Snap both to the midpoint
+            const midX = (orphan.point.x + nearestOrphan.point.x) / 2;
+            const midY = (orphan.point.y + nearestOrphan.point.y) / 2;
+
+            if (orphan.endpoint === 'a') {
+                orphan.edge.a.x = midX;
+                orphan.edge.a.y = midY;
+            } else {
+                orphan.edge.b.x = midX;
+                orphan.edge.b.y = midY;
+            }
+
+            if (nearestOrphan.endpoint === 'a') {
+                nearestOrphan.edge.a.x = midX;
+                nearestOrphan.edge.a.y = midY;
+            } else {
+                nearestOrphan.edge.b.x = midX;
+                nearestOrphan.edge.b.y = midY;
+            }
+
+            snapped.add(orphan.key);
+            snapped.add(nearestOrphan.key);
+            snapCount++;
+        }
+    }
+
+    console.log(`Edge cleanup: snapped ${snapCount} pairs of nearby orphans`);
+
+    // Final count
+    const remainingOrphans = finalOrphans.length - (snapCount * 2);
+    console.log(`Edge cleanup: ${remainingOrphans} orphaned endpoints remaining`);
+
+    return edges;
+}
+
+/**
+ * Check if a segment from p1 to p2 crosses any existing edge
+ * @param {Vector2} p1 - Start point
+ * @param {Vector2} p2 - End point
+ * @param {Edge2D[]} edges - Existing edges to check against
+ * @param {Edge2D} excludeEdge1 - Edge to exclude from check
+ * @param {Edge2D} excludeEdge2 - Edge to exclude from check
+ * @returns {boolean} True if segment crosses an edge
+ */
+function segmentCrossesEdges(p1, p2, edges, excludeEdge1, excludeEdge2) {
+    const eps = 0.001;
+
+    for (const edge of edges) {
+        if (edge === excludeEdge1 || edge === excludeEdge2) continue;
+
+        // Check if segment p1->p2 intersects edge.a->edge.b
+        const d1x = p2.x - p1.x;
+        const d1y = p2.y - p1.y;
+        const d2x = edge.b.x - edge.a.x;
+        const d2y = edge.b.y - edge.a.y;
+
+        const cross = d1x * d2y - d1y * d2x;
+        if (Math.abs(cross) < eps) continue; // Parallel
+
+        const dx = edge.a.x - p1.x;
+        const dy = edge.a.y - p1.y;
+
+        const t1 = (dx * d2y - dy * d2x) / cross;
+        const t2 = (dx * d1y - dy * d1x) / cross;
+
+        // Check if intersection is within both segments (with small margin)
+        if (t1 > eps && t1 < 1 - eps && t2 > eps && t2 < 1 - eps) {
+            return true; // Crosses an edge
+        }
+    }
+
+    return false;
+}
+
+/**
  * Main hidden line removal function
  * @param {Mesh} mesh 
  * @param {Camera} camera 
@@ -1355,8 +1667,12 @@ export function computeHiddenLines(mesh, camera, scene, options = {}) {
     console.log(`Visible edges: ${visibleEdges.length}`);
 
     console.time('optimize');
-    const finalEdges = optimizeEdges(visibleEdges);
+    const optimizedEdges = optimizeEdges(visibleEdges);
     console.timeEnd('optimize');
+
+    console.time('cleanup orphans');
+    const finalEdges = cleanupOrphanedEdges(optimizedEdges);
+    console.timeEnd('cleanup orphans');
     console.log(`Final edges: ${finalEdges.length}`);
 
     return {
@@ -1502,7 +1818,13 @@ export function computeHiddenLinesMultiple(meshes, camera, scene, options = {}) 
     }
     console.log(`Visible edges: ${visibleEdges.length}`);
 
-    const finalEdges = optimizeEdges(visibleEdges);
+    console.time('optimize');
+    const optimizedEdges = optimizeEdges(visibleEdges);
+    console.timeEnd('optimize');
+
+    console.time('cleanup orphans');
+    const finalEdges = cleanupOrphanedEdges(optimizedEdges);
+    console.timeEnd('cleanup orphans');
     console.log(`Final edges: ${finalEdges.length}`);
 
     return {
