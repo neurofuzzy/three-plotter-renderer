@@ -205,22 +205,42 @@
                 path.setAttribute('fill', 'none');
                 svg.appendChild(path);
             } else {
-                // NORMAL MODE: Clean black lines
-                let pathD = '';
+                // NORMAL MODE: Draw T-junction stragglers in RED, others in BLACK
+                let stragglersPathD = '';
+                let normalPathD = '';
+
                 for (const edge of edges) {
                     const x1 = edge.a.x + halfWidth;
                     const y1 = halfHeight + edge.a.y;
                     const x2 = edge.b.x + halfWidth;
                     const y2 = halfHeight + edge.b.y;
-                    pathD += `M${x1},${y1}L${x2},${y2}`;
+
+                    if (edge.isTJunctionStraggler) {
+                        stragglersPathD += `M${x1},${y1}L${x2},${y2}`;
+                    } else {
+                        normalPathD += `M${x1},${y1}L${x2},${y2}`;
+                    }
                 }
 
-                const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-                path.setAttribute('d', pathD);
-                path.setAttribute('stroke', '#000000');
-                path.setAttribute('stroke-width', '1.5');
-                path.setAttribute('fill', 'none');
-                svg.appendChild(path);
+                // Draw normal edges first (black)
+                if (normalPathD) {
+                    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                    path.setAttribute('d', normalPathD);
+                    path.setAttribute('stroke', '#000000');
+                    path.setAttribute('stroke-width', '1.5');
+                    path.setAttribute('fill', 'none');
+                    svg.appendChild(path);
+                }
+
+                // Draw T-junction stragglers on top (red)
+                if (stragglersPathD) {
+                    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                    path.setAttribute('d', stragglersPathD);
+                    path.setAttribute('stroke', '#ff0000');
+                    path.setAttribute('stroke-width', '2');
+                    path.setAttribute('fill', 'none');
+                    svg.appendChild(path);
+                }
             }
         }
 

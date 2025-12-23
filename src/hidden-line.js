@@ -420,6 +420,9 @@ export function splitAtIntersections(edges) {
         return null;
     };
 
+    // Track edges that might be stragglers (their endpoint caused a T-junction)
+    const potentialStragglers = new Set();
+
     // Find all intersections (crossing + T-junctions)
     for (let i = 0; i < edges.length; i++) {
         for (let j = i + 1; j < edges.length; j++) {
@@ -434,18 +437,23 @@ export function splitAtIntersections(edges) {
                 splits.get(edges[j]).push({ t: intersection.t2, point: intersection.point });
             } else {
                 // Check for T-junctions: endpoint of one edge on interior of other
+                // Mark BOTH edges as potential stragglers
 
                 // Edge i's endpoints on edge j
                 const tAonJ = pointOnEdgeInterior(edges[i].a, edges[j]);
                 if (tAonJ !== null) {
                     if (!splits.has(edges[j])) splits.set(edges[j], []);
                     splits.get(edges[j]).push({ t: tAonJ, point: edges[i].a.clone() });
+                    potentialStragglers.add(edges[i]);
+                    potentialStragglers.add(edges[j]);  // Mark BOTH
                 }
 
                 const tBonJ = pointOnEdgeInterior(edges[i].b, edges[j]);
                 if (tBonJ !== null) {
                     if (!splits.has(edges[j])) splits.set(edges[j], []);
                     splits.get(edges[j]).push({ t: tBonJ, point: edges[i].b.clone() });
+                    potentialStragglers.add(edges[i]);
+                    potentialStragglers.add(edges[j]);  // Mark BOTH
                 }
 
                 // Edge j's endpoints on edge i
@@ -453,24 +461,33 @@ export function splitAtIntersections(edges) {
                 if (tAonI !== null) {
                     if (!splits.has(edges[i])) splits.set(edges[i], []);
                     splits.get(edges[i]).push({ t: tAonI, point: edges[j].a.clone() });
+                    potentialStragglers.add(edges[i]);  // Mark BOTH
+                    potentialStragglers.add(edges[j]);
                 }
 
                 const tBonI = pointOnEdgeInterior(edges[j].b, edges[i]);
                 if (tBonI !== null) {
                     if (!splits.has(edges[i])) splits.set(edges[i], []);
                     splits.get(edges[i]).push({ t: tBonI, point: edges[j].b.clone() });
+                    potentialStragglers.add(edges[i]);  // Mark BOTH
+                    potentialStragglers.add(edges[j]);
                 }
             }
         }
     }
+
+    console.log(`T-junction detection: ${potentialStragglers.size} potential straggler edges`);
 
     // Split edges at recorded points
     const result = [];
 
     for (const edge of edges) {
         const edgeSplits = splits.get(edge);
+        const isStraggler = potentialStragglers.has(edge);
 
         if (!edgeSplits || edgeSplits.length === 0) {
+            // Mark the edge as potential straggler if it was identified
+            edge.isTJunctionStraggler = isStraggler;
             result.push(edge);
             continue;
         }
@@ -495,7 +512,9 @@ export function splitAtIntersections(edges) {
                 isProfile: edge.isProfile,
                 visible: edge.visible,
                 faceIdx: edge.faceIdx,
-                mesh: edge.mesh
+                mesh: edge.mesh,
+                normal1: edge.normal1,  // Propagate normal for smooth filter
+                isTJunctionStraggler: isStraggler
             });
 
             prevT = split.t;
@@ -513,7 +532,9 @@ export function splitAtIntersections(edges) {
             isProfile: edge.isProfile,
             visible: edge.visible,
             faceIdx: edge.faceIdx,
-            mesh: edge.mesh
+            mesh: edge.mesh,
+            normal1: edge.normal1,  // Propagate normal for smooth filter
+            isTJunctionStraggler: isStraggler
         });
     }
 
@@ -924,6 +945,70 @@ function barycentricDepth(p, a, b, c, depthA, depthB, depthC) {
 }
 
 /**
+ * Post-split smooth filter: removes T-junction straggler edges that lie on a coplanar face
+ * This catches "straggler" edges from T-junctions that extend into smooth surfaces
+ * @param {Edge2D[]} edges - Split edges to filter
+ * @param {Object[]} projectedFaces - Projected faces with normals
+ * @param {number} coplanarThreshold - Normal dot product threshold (default 0.99)
+ * @returns {Edge2D[]}
+ */
+export function filterSmoothSplitEdges(edges, projectedFaces, coplanarThreshold = 0.99) {
+    const filteredEdges = [];
+    let removedCount = 0;
+    let checkedCount = 0;
+
+    for (const edge of edges) {
+        // Only check edges marked as potential T-junction stragglers
+        if (!edge.isTJunctionStraggler) {
+            filteredEdges.push(edge);
+            continue;
+        }
+
+        checkedCount++;
+
+        // Get edge midpoint in 2D
+        const mid2d = new Vector2(
+            (edge.a.x + edge.b.x) / 2,
+            (edge.a.y + edge.b.y) / 2
+        );
+
+        let shouldRemove = false;
+
+        // Check if midpoint lies inside any projected face that is coplanar
+        for (const face of projectedFaces) {
+            // Skip the edge's own parent faces
+            if (face.mesh === edge.mesh &&
+                (face.faceIdx === edge.faceIdx || face.faceIdx === edge.faceIdx2)) {
+                continue;
+            }
+
+            // Check if midpoint is inside this face
+            if (!pointInTriangle2D(mid2d, face.a2d, face.b2d, face.c2d)) {
+                continue;
+            }
+
+            // Midpoint is inside this face - check if face is coplanar with edge's parent
+            if (!edge.normal1) continue;
+
+            // Check if face normal is similar to edge's parent face normal (coplanar)
+            const similarity = Math.abs(edge.normal1.dot(face.normal));
+            if (similarity >= coplanarThreshold) {
+                // This T-junction straggler lies on a coplanar face - remove it
+                shouldRemove = true;
+                removedCount++;
+                break;
+            }
+        }
+
+        if (!shouldRemove) {
+            filteredEdges.push(edge);
+        }
+    }
+
+    console.log(`Post-split smooth filter: checked ${checkedCount} T-junction edges, removed ${removedCount} stragglers`);
+    return filteredEdges;
+}
+/**
  * Test edge visibility using pure math (point-in-triangle + depth)
  * No GPU, no raycasting - fully mathematical
  * @param {Edge2D[]} edges 
@@ -1319,21 +1404,28 @@ export function computeHiddenLinesMultiple(meshes, camera, scene, options = {}) 
             projectedFaces.push({
                 a2d, b2d, c2d,
                 depthA, depthB, depthC,
-                mesh, faceIdx: f
+                mesh, faceIdx: f,
+                normal  // Store normal for post-split smooth filter
             });
         }
     }
     console.timeEnd('buildProjectedFaces');
     console.log(`Built ${projectedFaces.length} projected faces for occlusion`);
 
+    // Post-split smooth filter: remove straggler edges on coplanar faces
+    console.time('filterSmoothSplitEdges');
+    const smoothFilteredEdges = filterSmoothSplitEdges(splitEdges, projectedFaces, smoothThreshold);
+    console.timeEnd('filterSmoothSplitEdges');
+    console.log(`After post-split smooth filter: ${smoothFilteredEdges.length} edges`);
+
     // Occlusion using pure math
     let visibleEdges;
     if (skipOcclusion) {
-        visibleEdges = splitEdges;
+        visibleEdges = smoothFilteredEdges;
     } else {
         console.time('testOcclusion (math)');
         // Test ALL edges through occlusion (no special treatment for profiles)
-        visibleEdges = testOcclusionMath(splitEdges, projectedFaces, camera);
+        visibleEdges = testOcclusionMath(smoothFilteredEdges, projectedFaces, camera);
         console.timeEnd('testOcclusion (math)');
     }
     console.log(`Visible edges: ${visibleEdges.length}`);
