@@ -265,8 +265,8 @@
                     line.setAttribute('y1', y1);
                     line.setAttribute('x2', x2);
                     line.setAttribute('y2', y2);
-                    line.setAttribute('stroke', edge.isTJunctionStraggler ? '#ff0000' : '#000000');
-                    line.setAttribute('stroke-width', edge.isTJunctionStraggler ? '3' : '1.5');
+                    line.setAttribute('stroke', edge.isCoplanarCandidate ? '#ff0000' : '#000000');
+                    line.setAttribute('stroke-width', edge.isCoplanarCandidate ? '3' : '1.5');
                     line.setAttribute('data-idx', edgeIndex);
                     line.style.cursor = 'pointer';
 
@@ -324,17 +324,38 @@
                         const n1 = edgeRef.normal1;
                         const n2 = edgeRef.normal2;
                         console.log(`--- Edge ${idx} ---`);
-                        console.log(`  isTJunctionStraggler: ${edgeRef.isTJunctionStraggler}`);
+                        console.log(`  isCoplanarCandidate: ${edgeRef.isCoplanarCandidate || false} (faceSimilarity: ${edgeRef.faceSimilarity?.toFixed(4) || 'N/A'})`);
+                        console.log(`  adjacentFaceCount: ${edgeRef.adjacentFaceCount || 0}`);
                         console.log(`  Original faceIdx: ${edgeRef.faceIdx}, faceIdx2: ${edgeRef.faceIdx2 ?? 'none'}`);
                         console.log(`  Geometric matches: ${adjacentFaces.length} faces found`);
+
+                        // Log each matched face with its normal
                         adjacentFaces.forEach((match, i) => {
-                            console.log(`    Face ${i}: faceIdx=${match.face.faceIdx}, edge=${match.matchedEdge}`);
+                            const fn = match.face.normal;
+                            const normalStr = fn ? `[${fn.x.toFixed(3)}, ${fn.y.toFixed(3)}, ${fn.z.toFixed(3)}]` : 'MISSING';
+                            console.log(`    Face ${i}: faceIdx=${match.face.faceIdx}, edge=${match.matchedEdge}, normal=${normalStr}`);
                         });
-                        console.log(`  normal1: ${n1 ? `[${n1.x.toFixed(3)}, ${n1.y.toFixed(3)}, ${n1.z.toFixed(3)}]` : 'MISSING'}`);
-                        console.log(`  normal2: ${n2 ? `[${n2.x.toFixed(3)}, ${n2.y.toFixed(3)}, ${n2.z.toFixed(3)}]` : 'none (boundary)'}`);
+
+                        // If we have 2+ faces, check if they're coplanar
+                        if (adjacentFaces.length >= 2) {
+                            const fn1 = adjacentFaces[0].face.normal;
+                            const fn2 = adjacentFaces[1].face.normal;
+                            if (fn1 && fn2) {
+                                const dot = fn1.dot(fn2);
+                                console.log(`  Face normal similarity: ${dot.toFixed(4)} (>0.99 = COPLANAR/SMOOTH)`);
+                                if (Math.abs(dot) > 0.99) {
+                                    console.log(`  ⚠️ This edge lies between COPLANAR faces - potential straggler!`);
+                                }
+                            }
+                        } else {
+                            console.log(`  ⚠️ Only ${adjacentFaces.length} face(s) - true boundary edge`);
+                        }
+
+                        console.log(`  Original normal1: ${n1 ? `[${n1.x.toFixed(3)}, ${n1.y.toFixed(3)}, ${n1.z.toFixed(3)}]` : 'MISSING'}`);
+                        console.log(`  Original normal2: ${n2 ? `[${n2.x.toFixed(3)}, ${n2.y.toFixed(3)}, ${n2.z.toFixed(3)}]` : 'none (boundary)'}`);
                         if (n1 && n2) {
                             const dot = n1.dot(n2);
-                            console.log(`  normal similarity: ${dot.toFixed(4)} (>0.99 = smooth)`);
+                            console.log(`  Original normal similarity: ${dot.toFixed(4)}`);
                         }
                     });
 

@@ -1025,48 +1025,51 @@ function barycentricDepth(p, a, b, c, depthA, depthB, depthC) {
 export function filterSmoothSplitEdges(edges, projectedFaces, coplanarThreshold = 0.99) {
     const filteredEdges = [];
     let removedCount = 0;
-    let checkedCount = 0;
 
     for (const edge of edges) {
-        // Only check edges marked as potential T-junction stragglers
-        if (!edge.isTJunctionStraggler) {
-            filteredEdges.push(edge);
-            continue;
-        }
+        // Find all adjacent faces geometrically
+        const adjacentFaces = findAdjacentFaces(edge, projectedFaces);
 
-        checkedCount++;
-
-        // Get edge midpoint in 2D
-        const mid2d = new Vector2(
-            (edge.a.x + edge.b.x) / 2,
-            (edge.a.y + edge.b.y) / 2
-        );
+        // Store adjacent face count for debugging
+        edge.adjacentFaceCount = adjacentFaces.length;
 
         let shouldRemove = false;
 
-        // Check if midpoint lies inside any projected face that is coplanar
-        for (const face of projectedFaces) {
-            // Skip the edge's own parent faces
-            if (face.mesh === edge.mesh &&
-                (face.faceIdx === edge.faceIdx || face.faceIdx === edge.faceIdx2)) {
-                continue;
+        // Only remove if we have exactly 2 faces with matching normals
+        if (adjacentFaces.length === 2) {
+            const fn1 = adjacentFaces[0].face.normal;
+            const fn2 = adjacentFaces[1].face.normal;
+
+            if (fn1 && fn2) {
+                const similarity = Math.abs(fn1.dot(fn2));
+                edge.faceSimilarity = similarity;
+
+                if (similarity >= coplanarThreshold) {
+                    // Edge lies between exactly 2 coplanar faces - remove it
+                    shouldRemove = true;
+                    removedCount++;
+                }
             }
+        } else if (adjacentFaces.length > 2) {
+            // 3+ faces: check if ALL normals match - only then remove
+            const normals = adjacentFaces.map(af => af.face.normal).filter(n => n);
+            if (normals.length >= 2) {
+                let allCoplanar = true;
+                let minSimilarity = 1;
+                for (let i = 1; i < normals.length; i++) {
+                    const sim = Math.abs(normals[0].dot(normals[i]));
+                    minSimilarity = Math.min(minSimilarity, sim);
+                    if (sim < coplanarThreshold) {
+                        allCoplanar = false;
+                        break;
+                    }
+                }
+                edge.faceSimilarity = minSimilarity;
 
-            // Check if midpoint is inside this face
-            if (!pointInTriangle2D(mid2d, face.a2d, face.b2d, face.c2d)) {
-                continue;
-            }
-
-            // Midpoint is inside this face - check if face is coplanar with edge's parent
-            if (!edge.normal1) continue;
-
-            // Check if face normal is similar to edge's parent face normal (coplanar)
-            const similarity = Math.abs(edge.normal1.dot(face.normal));
-            if (similarity >= coplanarThreshold) {
-                // This T-junction straggler lies on a coplanar face - remove it
-                shouldRemove = true;
-                removedCount++;
-                break;
+                if (allCoplanar) {
+                    shouldRemove = true;
+                    removedCount++;
+                }
             }
         }
 
@@ -1075,7 +1078,7 @@ export function filterSmoothSplitEdges(edges, projectedFaces, coplanarThreshold 
         }
     }
 
-    console.log(`Post-split smooth filter: checked ${checkedCount} T-junction edges, removed ${removedCount} stragglers`);
+    console.log(`Geometric straggler filter: removed ${removedCount} coplanar edges`);
     return filteredEdges;
 }
 /**
@@ -1482,13 +1485,10 @@ export function computeHiddenLinesMultiple(meshes, camera, scene, options = {}) 
     console.timeEnd('buildProjectedFaces');
     console.log(`Built ${projectedFaces.length} projected faces for occlusion`);
 
-    // Post-split smooth filter: DISABLED for debugging
-    // TODO: Re-enable once we figure out proper straggler detection
+    // Geometric straggler filter: remove edges lying between coplanar faces
     console.time('filterSmoothSplitEdges');
-    // const smoothFilteredEdges = filterSmoothSplitEdges(splitEdges, projectedFaces, smoothThreshold);
-    const smoothFilteredEdges = splitEdges;  // BYPASS for debugging
+    const smoothFilteredEdges = filterSmoothSplitEdges(splitEdges, projectedFaces, smoothThreshold);
     console.timeEnd('filterSmoothSplitEdges');
-    console.log(`After post-split smooth filter: ${smoothFilteredEdges.length} edges (FILTER DISABLED)`);
 
     // Occlusion using pure math
     let visibleEdges;
