@@ -392,9 +392,38 @@ export function splitAtIntersections(edges) {
     /** @type {Map<Edge2D, {t: number, point: Vector2}[]>} */
     const splits = new Map();
 
-    // Find all intersections
+    const eps = 0.01;
+
+    // Helper: check if point p lies on edge interior (not endpoints)
+    // Returns t parameter (0,1) if on edge, null otherwise
+    const pointOnEdgeInterior = (p, edge) => {
+        const dx = edge.b.x - edge.a.x;
+        const dy = edge.b.y - edge.a.y;
+        const lenSq = dx * dx + dy * dy;
+        if (lenSq < 1e-10) return null; // Degenerate edge
+
+        // Project p onto edge line
+        const t = ((p.x - edge.a.x) * dx + (p.y - edge.a.y) * dy) / lenSq;
+
+        // Check if t is in interior (not at endpoints)
+        if (t <= eps || t >= 1 - eps) return null;
+
+        // Check distance from point to projected point on line
+        const projX = edge.a.x + t * dx;
+        const projY = edge.a.y + t * dy;
+        const distSq = (p.x - projX) * (p.x - projX) + (p.y - projY) * (p.y - projY);
+
+        // Tolerance for "on the edge"
+        if (distSq < 1.0) { // 1 pixel tolerance
+            return t;
+        }
+        return null;
+    };
+
+    // Find all intersections (crossing + T-junctions)
     for (let i = 0; i < edges.length; i++) {
         for (let j = i + 1; j < edges.length; j++) {
+            // Check for crossing intersection
             const intersection = findIntersection(edges[i], edges[j]);
             if (intersection) {
                 // Record split points for both edges
@@ -403,6 +432,34 @@ export function splitAtIntersections(edges) {
 
                 splits.get(edges[i]).push({ t: intersection.t1, point: intersection.point });
                 splits.get(edges[j]).push({ t: intersection.t2, point: intersection.point });
+            } else {
+                // Check for T-junctions: endpoint of one edge on interior of other
+
+                // Edge i's endpoints on edge j
+                const tAonJ = pointOnEdgeInterior(edges[i].a, edges[j]);
+                if (tAonJ !== null) {
+                    if (!splits.has(edges[j])) splits.set(edges[j], []);
+                    splits.get(edges[j]).push({ t: tAonJ, point: edges[i].a.clone() });
+                }
+
+                const tBonJ = pointOnEdgeInterior(edges[i].b, edges[j]);
+                if (tBonJ !== null) {
+                    if (!splits.has(edges[j])) splits.set(edges[j], []);
+                    splits.get(edges[j]).push({ t: tBonJ, point: edges[i].b.clone() });
+                }
+
+                // Edge j's endpoints on edge i
+                const tAonI = pointOnEdgeInterior(edges[j].a, edges[i]);
+                if (tAonI !== null) {
+                    if (!splits.has(edges[i])) splits.set(edges[i], []);
+                    splits.get(edges[i]).push({ t: tAonI, point: edges[j].a.clone() });
+                }
+
+                const tBonI = pointOnEdgeInterior(edges[j].b, edges[i]);
+                if (tBonI !== null) {
+                    if (!splits.has(edges[i])) splits.set(edges[i], []);
+                    splits.get(edges[i]).push({ t: tBonI, point: edges[j].b.clone() });
+                }
             }
         }
     }
