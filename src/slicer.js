@@ -13,6 +13,7 @@ export class Slicer {
      * @param {number} [options.spacing] - Spacing between hatch lines (default: 0.5)
      * @param {number} [options.offset] - Offset for plane spacing (default: 0)
      * @param {Vector3} [options.normal] - Normal of the slicing planes (default: Y axis [0,1,0])
+     * @param {Vector3} [options.spacings] - Absolute spacing per axis (X,Y,Z). If provided, overrides 'spacing'.
      * @param {number} [options.rotation] - Rotation around Y axis in degrees (alternative to normal)
      * @returns {Array} List of edge objects {a: Vector3, b: Vector3, ...}
      */
@@ -64,6 +65,17 @@ export class Slicer {
             const edge2 = new Vector3().subVectors(v2, v0);
             const faceNormal = new Vector3().crossVectors(edge1, edge2).normalize();
 
+            // Calculate per-face spacing
+            // If specific per-axis spacings are provided, blend them based on face orientation.
+            let faceSpacing = spacing;
+            if (options.spacings) {
+                // Blend spacings based on face normal components (absolute)
+                faceSpacing =
+                    Math.abs(faceNormal.x) * options.spacings.x +
+                    Math.abs(faceNormal.y) * options.spacings.y +
+                    Math.abs(faceNormal.z) * options.spacings.z;
+            }
+
             // Project vertices onto plane normal
             const d0 = v0.dot(normal);
             const d1 = v1.dot(normal);
@@ -72,15 +84,13 @@ export class Slicer {
             const minFaceD = Math.min(d0, Math.min(d1, d2));
             const maxFaceD = Math.max(d0, Math.max(d1, d2));
 
-            // Determine which planes intersect this face
-            // Plane equation: d = k * spacing + offset
-            // we want minFaceD <= k * spacing + offset <= maxFaceD
-            // (minFaceD - offset) / spacing <= k <= (maxFaceD - offset) / spacing
-            const startPlaneIdx = Math.ceil((minFaceD - offset) / spacing);
-            const endPlaneIdx = Math.floor((maxFaceD - offset) / spacing);
+            // Determine which planes intersect this face using current faceSpacing
+            // Plane equation: d = k * faceSpacing + offset
+            const startPlaneIdx = Math.ceil((minFaceD - offset) / faceSpacing);
+            const endPlaneIdx = Math.floor((maxFaceD - offset) / faceSpacing);
 
             for (let i = startPlaneIdx; i <= endPlaneIdx; i++) {
-                const planeD = i * spacing + offset;
+                const planeD = i * faceSpacing + offset;
 
                 // Find intersection segment
                 const intersections = [];
