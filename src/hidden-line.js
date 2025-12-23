@@ -1187,13 +1187,12 @@ export function computeHiddenLinesMultiple(meshes, camera, scene, options = {}) 
 
     console.log(`Extracted ${allEdges3d.length} edges from ${meshes.length} meshes`);
 
-    // SKIP backface filter for debugging - show ALL edges
-    // const frontEdges = filterBackfacing(allEdges3d, camera.position);
-    // console.log(`After backface filter: ${frontEdges.length} edges`);
+    // Classify edges: identify profiles and filter smooth edges
+    const { profiles, smoothFiltered } = classifyEdges(allEdges3d, camera.position, smoothThreshold);
+    console.log(`Profiles: ${profiles.length}, Crease edges: ${smoothFiltered.length}`);
 
-    // Show ALL edges without any filtering
-    const allEdges = allEdges3d;
-    console.log(`All edges (no filters): ${allEdges.length}`);
+    const allEdges = [...profiles, ...smoothFiltered];
+    console.log(`After smooth filter: ${allEdges.length} edges`);
 
     // Project to 2D
     let edges2d = projectEdges(allEdges, camera, width, height);
