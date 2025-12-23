@@ -1021,9 +1021,10 @@ function barycentricDepth(p, a, b, c, depthA, depthB, depthC) {
  * @param {Edge2D[]} edges - Split edges to filter
  * @param {Object[]} projectedFaces - Projected faces with normals
  * @param {number} coplanarThreshold - Normal dot product threshold (default 0.99)
+ * @param {number} distanceThreshold - Plane distance threshold (default 0.5)
  * @returns {Edge2D[]}
  */
-export function filterSmoothSplitEdges(edges, projectedFaces, coplanarThreshold = 0.99) {
+export function filterSmoothSplitEdges(edges, projectedFaces, coplanarThreshold = 0.99, distanceThreshold = 0.5) {
     const filteredEdges = [];
     let removedCount = 0;
 
@@ -1036,31 +1037,56 @@ export function filterSmoothSplitEdges(edges, projectedFaces, coplanarThreshold 
 
         let shouldRemove = false;
 
-        // Only remove if we have exactly 2 faces with matching normals
+        // Only remove if we have exactly 2 faces with matching normals AND matching plane constants
         if (adjacentFaces.length === 2) {
-            const fn1 = adjacentFaces[0].face.normal;
-            const fn2 = adjacentFaces[1].face.normal;
+            const f1 = adjacentFaces[0].face;
+            const f2 = adjacentFaces[1].face;
+            const fn1 = f1.normal;
+            const fn2 = f2.normal;
 
             if (fn1 && fn2) {
-                const similarity = Math.abs(fn1.dot(fn2));
+                const dot = fn1.dot(fn2);
+                const similarity = Math.abs(dot);
                 edge.faceSimilarity = similarity;
 
-                if (similarity >= coplanarThreshold) {
+                // Check distance between planes (must be very close to be truly coplanar)
+                // If normals are parallel (dot > 0), d1 ~ d2 => diff ~ 0
+                // If normals are anti-parallel (dot < 0), d1 ~ -d2 => sum ~ 0
+                let distDiff;
+                if (dot > 0) {
+                    distDiff = Math.abs(f1.constant - f2.constant);
+                } else {
+                    distDiff = Math.abs(f1.constant + f2.constant);
+                }
+                console.log(distDiff)
+
+                if (similarity >= coplanarThreshold && distDiff < distanceThreshold) {
                     // Edge lies between exactly 2 coplanar faces - remove it
                     shouldRemove = true;
                     removedCount++;
                 }
             }
         } else if (adjacentFaces.length > 2) {
-            // 3+ faces: check if ALL normals match - only then remove
-            const normals = adjacentFaces.map(af => af.face.normal).filter(n => n);
-            if (normals.length >= 2) {
+            // 3+ faces: check if ALL normals match AND ALL planes match
+            const faces = adjacentFaces.map(af => af.face).filter(f => f.normal);
+            if (faces.length >= 2) {
                 let allCoplanar = true;
                 let minSimilarity = 1;
-                for (let i = 1; i < normals.length; i++) {
-                    const sim = Math.abs(normals[0].dot(normals[i]));
+
+                for (let i = 1; i < faces.length; i++) {
+                    const dot = faces[0].normal.dot(faces[i].normal);
+                    const sim = Math.abs(dot);
+
+                    let distDiff;
+                    if (dot > 0) {
+                        distDiff = Math.abs(faces[0].constant - faces[i].constant);
+                    } else {
+                        distDiff = Math.abs(faces[0].constant + faces[i].constant);
+                    }
+
                     minSimilarity = Math.min(minSimilarity, sim);
-                    if (sim < coplanarThreshold) {
+
+                    if (sim < coplanarThreshold || distDiff >= distanceThreshold) {
                         allCoplanar = false;
                         break;
                     }
@@ -1745,7 +1771,8 @@ export function computeHiddenLinesMultiple(meshes, camera, scene, options = {}) 
         width = 800,
         height = 600,
         renderer = null,
-        internalScale = 4  // Scale up internally for better precision
+        internalScale = 4,  // Scale up internally for better precision
+        distanceThreshold = 0.5 // Default plane distance threshold
     } = options;
 
     // Process each mesh to extract edges (keep local face indices with mesh reference)
@@ -1814,6 +1841,10 @@ export function computeHiddenLinesMultiple(meshes, camera, scene, options = {}) 
             const faceMid = new Vector3().addVectors(v0, v1).add(v2).divideScalar(3);
             const viewDir = new Vector3().subVectors(cameraPos, faceMid);
 
+            // Plane constant d for the plane equation ax + by + cz + d = 0
+            // d = -(n . p)
+            const constant = -normal.dot(v0);
+
             // Only include front-facing faces (back-facing can't occlude)
             if (normal.dot(viewDir) <= 0) continue;
 
@@ -1836,7 +1867,8 @@ export function computeHiddenLinesMultiple(meshes, camera, scene, options = {}) 
                 a2d, b2d, c2d,
                 depthA, depthB, depthC,
                 mesh, faceIdx: f,
-                normal  // Store normal for post-split smooth filter
+                normal,  // Store normal for post-split smooth filter
+                constant // Store plane constant for coplanar detection
             });
         }
     }
@@ -1845,7 +1877,7 @@ export function computeHiddenLinesMultiple(meshes, camera, scene, options = {}) 
 
     // Geometric straggler filter: remove edges lying between coplanar faces
     console.time('filterSmoothSplitEdges');
-    const smoothFilteredEdges = filterSmoothSplitEdges(splitEdges, projectedFaces, smoothThreshold);
+    const smoothFilteredEdges = filterSmoothSplitEdges(splitEdges, projectedFaces, smoothThreshold, distanceThreshold);
     console.timeEnd('filterSmoothSplitEdges');
 
     // Occlusion using pure math

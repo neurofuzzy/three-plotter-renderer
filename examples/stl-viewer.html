@@ -227,7 +227,8 @@
                     skipOcclusion: false,
                     width: window.innerWidth,
                     height: window.innerHeight,
-                    renderer: renderer
+                    renderer: renderer,
+                    distanceThreshold: 0.5 // Tolerance for coplanar face detection
                 });
 
                 const elapsed = performance.now() - startTime;
