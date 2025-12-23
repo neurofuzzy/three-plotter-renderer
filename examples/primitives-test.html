@@ -53,7 +53,7 @@
     <script type="module">
         import * as THREE from 'three';
         import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-        import { computeHiddenLines } from '../src/hidden-line.js';
+        import { computeHiddenLines, computeHiddenLinesMultiple } from '../src/hidden-line.js';
 
         let scene, camera, renderer, controls;
         let pyramid, cylinder, sphere;
@@ -79,10 +79,11 @@
             scene.add(light);
             scene.add(new THREE.AmbientLight(0x404040));
 
-            // Materials - NOT transparent so depth writes properly
+            // Materials - NOT transparent so depth writes properly, FLAT shading
             const material = new THREE.MeshPhongMaterial({
                 color: 0x44aa88,
-                transparent: false
+                transparent: false,
+                flatShading: true
             });
 
             // Pyramid (cone with 4 sides)
@@ -149,58 +150,98 @@
             setTimeout(() => {
                 const startTime = performance.now();
 
-                // Process each mesh separately
-                const allEdges = [];
+                // Process all meshes together for cross-object occlusion
                 const meshes = [pyramid, cylinder, sphere];
-
                 for (const mesh of meshes) {
                     mesh.updateMatrixWorld(true);
-
-                    const result = computeHiddenLines(mesh, camera, scene, {
-                        smoothThreshold: 0.99,
-                        gridSize: 32,
-                        occlusionEpsilon: 0.02,
-                        skipOcclusion: false,
-                        width: window.innerWidth,
-                        height: window.innerHeight,
-                        renderer: renderer
-                    });
-
-                    allEdges.push(...result.edges);
                 }
+
+                const result = computeHiddenLinesMultiple(meshes, camera, scene, {
+                    smoothThreshold: 0.99,
+                    gridSize: 32,
+                    skipOcclusion: true,  // DEBUG: Show ALL edges
+                    width: window.innerWidth,
+                    height: window.innerHeight,
+                    renderer: renderer
+                });
 
                 const elapsed = performance.now() - startTime;
                 document.getElementById('stats').textContent =
-                    `Rendered ${allEdges.length} edges in ${elapsed.toFixed(0)}ms`;
+                    `Rendered ${result.edges.length} edges in ${elapsed.toFixed(0)}ms`;
 
-                drawToSVG(allEdges);
+                drawToSVG(result.edges, result.allEdges);
             }, 50);
         }
 
-        function drawToSVG(edges) {
+        function drawToSVG(edges, allEdges) {
             const svg = document.getElementById('svg-overlay');
             svg.innerHTML = '';
 
             const halfWidth = window.innerWidth / 2;
             const halfHeight = window.innerHeight / 2;
 
-            let pathD = '';
+            // Draw hidden edges first (purple, behind visible)
+            if (allEdges) {
+                let hiddenPathD = '';
+                for (const edge of allEdges) {
+                    if (edge.visible) continue; // Skip visible
+                    const x1 = edge.a.x + halfWidth;
+                    const y1 = halfHeight + edge.a.y;
+                    const x2 = edge.b.x + halfWidth;
+                    const y2 = halfHeight + edge.b.y;
+                    hiddenPathD += `M${x1},${y1}L${x2},${y2}`;
+                }
+                if (hiddenPathD) {
+                    const hiddenPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                    hiddenPath.setAttribute('d', hiddenPathD);
+                    hiddenPath.setAttribute('stroke', '#9900ff');
+                    hiddenPath.setAttribute('stroke-width', '1');
+                    hiddenPath.setAttribute('fill', 'none');
+                    hiddenPath.setAttribute('opacity', '0.6');
+                    svg.appendChild(hiddenPath);
+                }
+            }
+
+            // Draw visible edges - color by mesh for debugging
+            const meshColors = new Map([
+                [pyramid, '#ff6644'],    // Red-orange for pyramid
+                [cylinder, '#ff00ff'],   // Pink for cylinder
+                [sphere, '#ffaa00']      // Orange for icosahedron
+            ]);
 
             for (const edge of edges) {
                 const x1 = edge.a.x + halfWidth;
-                const y1 = halfHeight + edge.a.y;  // projectEdges already negates Y
+                const y1 = halfHeight + edge.a.y;
                 const x2 = edge.b.x + halfWidth;
                 const y2 = halfHeight + edge.b.y;
 
-                pathD += `M${x1},${y1}L${x2},${y2}`;
+                const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                line.setAttribute('x1', x1);
+                line.setAttribute('y1', y1);
+                line.setAttribute('x2', x2);
+                line.setAttribute('y2', y2);
+                line.setAttribute('stroke', meshColors.get(edge.mesh) || '#00ff00');
+                line.setAttribute('stroke-width', '1.5');
+                svg.appendChild(line);
             }
 
-            const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-            path.setAttribute('d', pathD);
-            path.setAttribute('stroke', '#00ff00');
-            path.setAttribute('stroke-width', '1.5');
-            path.setAttribute('fill', 'none');
-            svg.appendChild(path);
+            // Draw endpoint circles for all edges (both visible and hidden)
+            const endpoints = allEdges || edges;
+            for (const edge of endpoints) {
+                const x1 = edge.a.x + halfWidth;
+                const y1 = halfHeight + edge.a.y;
+                const x2 = edge.b.x + halfWidth;
+                const y2 = halfHeight + edge.b.y;
+
+                for (const [x, y] of [[x1, y1], [x2, y2]]) {
+                    const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+                    circle.setAttribute('cx', x);
+                    circle.setAttribute('cy', y);
+                    circle.setAttribute('r', '2');
+                    circle.setAttribute('fill', edge.visible ? '#00ff00' : '#ff0000');
+                    svg.appendChild(circle);
+                }
+            }
         }
 
         function exportSVG() {

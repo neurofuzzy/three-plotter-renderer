@@ -18,7 +18,11 @@ import {
     RGBAFormat,
     UnsignedByteType,
     MeshDepthMaterial,
-    RGBADepthPacking
+    RGBADepthPacking,
+    ShaderMaterial,
+    BufferAttribute,
+    BufferGeometry,
+    DoubleSide
 } from "three";
 
 /**
@@ -47,10 +51,12 @@ import {
 
 /**
  * Extract edges from a mesh with face normal information
+ * Only extracts edges from front-facing faces (skips back-facing)
  * @param {Mesh} mesh 
+ * @param {Vector3} cameraPosition - Camera position for face culling
  * @returns {Edge3D[]}
  */
-export function extractEdges(mesh) {
+export function extractEdges(mesh, cameraPosition) {
     const geometry = mesh.geometry;
     const position = geometry.attributes.position;
     const index = geometry.index;
@@ -75,16 +81,17 @@ export function extractEdges(mesh) {
         const keyA = `${ax},${ay},${az}`;
         const keyB = `${bx},${by},${bz}`;
 
-        // Sort to ensure consistent ordering
+        // Consistent ordering for undirected edges
         return keyA < keyB ? `${keyA}|${keyB}` : `${keyB}|${keyA}`;
     };
 
     const getVertex = (idx) => {
-        return new Vector3(
+        const v = new Vector3(
             position.getX(idx),
             position.getY(idx),
             position.getZ(idx)
-        ).applyMatrix4(mesh.matrixWorld);
+        );
+        return v.applyMatrix4(mesh.matrixWorld);
     };
 
     const getFaceNormal = (v0, v1, v2) => {
@@ -112,6 +119,13 @@ export function extractEdges(mesh) {
         const v1 = getVertex(i1);
         const v2 = getVertex(i2);
         const normal = getFaceNormal(v0, v1, v2);
+
+        // Skip back-facing faces - only extract edges from front-facing faces
+        const faceMid = new Vector3().addVectors(v0, v1).add(v2).divideScalar(3);
+        const viewDir = new Vector3().subVectors(cameraPosition, faceMid);
+        if (normal.dot(viewDir) <= 0) {
+            continue; // Skip back-facing face
+        }
 
         // Process three edges of the triangle
         const edges = [
@@ -157,7 +171,13 @@ export function filterBackfacing(edges, cameraPosition) {
         const viewDir = new Vector3().subVectors(cameraPosition, edgeMidpoint).normalize();
 
         const facing1 = edge.normal1.dot(viewDir) > 0;
-        const facing2 = edge.normal2 ? edge.normal2.dot(viewDir) > 0 : false;
+
+        // Boundary edges (only one face) are always kept - they're silhouettes
+        if (!edge.normal2) {
+            return true;
+        }
+
+        const facing2 = edge.normal2.dot(viewDir) > 0;
 
         // Keep edge if at least one face is front-facing
         return facing1 || facing2;
@@ -206,6 +226,8 @@ export function classifyEdges(edges, cameraPosition, smoothThreshold = 0.99) {
         }
     }
 
+    console.log(`classifyEdges: ${profiles.length} profiles, ${smoothFiltered.length} smooth/crease edges`);
+
     return { profiles, smoothFiltered };
 }
 
@@ -238,6 +260,7 @@ export function projectEdges(edges, camera, width, height) {
         isProfile: false, // Will be set by classifyEdges
         visible: true,
         faceIdx: edge.faceIdx1,
+        faceIdx2: edge.faceIdx2,
         mesh: edge.mesh
     }));
 }
@@ -546,7 +569,7 @@ export function testOcclusionDepthBuffer(edges, scene, camera, epsilon, width, h
         const midY = (edge.a.y + edge.b.y) / 2;
 
         const sx = Math.round(midX + width / 2);
-        const sy = Math.round(height / 2 - midY); // Flip Y
+        const sy = Math.round(height / 2 + midY); // projectEdges already negates Y
 
         // Check bounds
         if (sx < 0 || sx >= width || sy < 0 || sy >= height) {
@@ -564,16 +587,24 @@ export function testOcclusionDepthBuffer(edges, scene, camera, epsilon, width, h
             depthData[depthIdx + 3]
         );
 
-        // Compute expected depth of edge midpoint
-        // MeshDepthMaterial with RGBADepthPacking stores (distance - near) / (far - near)
-        // This is linear depth, not perspective depth
+        // Compute expected depth using view-space Z (linear depth)
+        // MeshDepthMaterial stores: (viewZ - near) / (far - near) where viewZ is distance along camera's look direction
+        // For perspective cameras, we need to transform the midpoint to view space
         const midpoint3d = edge.midpoint3d;
-        const distanceToCamera = camera.position.distanceTo(midpoint3d);
-        const expectedDepth = (distanceToCamera - near) / (far - near);
+
+        // Transform to view space (camera-relative coordinates)
+        const viewMatrix = camera.matrixWorldInverse;
+        const viewPos = midpoint3d.clone().applyMatrix4(viewMatrix);
+
+        // viewPos.z is negative in front of camera, so we negate it
+        const viewZ = -viewPos.z;
+
+        // Convert to 0-1 range matching MeshDepthMaterial
+        const expectedDepth = (viewZ - near) / (far - near);
 
         // Debug logging
         if (debugCount < 10) {
-            console.log(`Edge ${debugCount}: sample=${sampledDepth.toFixed(4)}, expected=${expectedDepth.toFixed(4)}, dist=${distanceToCamera.toFixed(0)}, diff=${(sampledDepth - expectedDepth).toFixed(6)}`);
+            console.log(`Edge ${debugCount}: sample=${sampledDepth.toFixed(4)}, expected=${expectedDepth.toFixed(4)}, diff=${(sampledDepth - expectedDepth).toFixed(6)}`);
             debugCount++;
         }
 
@@ -593,6 +624,313 @@ export function testOcclusionDepthBuffer(edges, scene, camera, epsilon, width, h
     renderTarget.dispose();
     depthMaterial.dispose();
 
+    return visibleEdges;
+}
+
+/**
+ * Test edge visibility using face ID buffer (correct occlusion)
+ * Renders each face with a unique color = face index
+ * Samples at edge midpoint to check if parent face is visible
+ * @param {Edge2D[]} edges 
+ * @param {Mesh[]} meshes - All meshes in scene
+ * @param {Camera} camera 
+ * @param {number} width - Viewport width
+ * @param {number} height - Viewport height
+ * @param {any} renderer - THREE.WebGLRenderer instance
+ * @param {boolean} isProfile - If true, these are profile edges (always visible)
+ * @returns {Edge2D[]}
+ */
+export function testOcclusionFaceID(edges, meshes, camera, width, height, renderer, isProfile = false) {
+    // Profile edges are ALWAYS visible (silhouette edges)
+    if (isProfile) {
+        edges.forEach(e => e.visible = true);
+        return edges;
+    }
+
+    const visibleEdges = [];
+
+    if (!renderer) {
+        console.warn('No renderer provided, skipping occlusion test');
+        return edges;
+    }
+
+    // Create render target for face IDs
+    const renderTarget = new WebGLRenderTarget(width, height, {
+        minFilter: NearestFilter,
+        magFilter: NearestFilter,
+        format: RGBAFormat,
+        type: UnsignedByteType
+    });
+
+    // Create face ID shader material
+    const faceIdMaterial = new ShaderMaterial({
+        vertexShader: `
+            attribute vec3 faceColor;
+            varying vec3 vFaceColor;
+            void main() {
+                vFaceColor = faceColor;
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            }
+        `,
+        fragmentShader: `
+            varying vec3 vFaceColor;
+            void main() {
+                gl_FragColor = vec4(vFaceColor, 1.0);
+            }
+        `,
+        side: DoubleSide
+    });
+
+    // Build meshes with face ID colors
+    const faceIdMeshes = [];
+    let globalFaceOffset = 0;
+
+    for (const mesh of meshes) {
+        const geom = mesh.geometry;
+        const position = geom.attributes.position;
+        const index = geom.index;
+
+        const numFaces = index ? index.count / 3 : position.count / 3;
+
+        // Create new geometry with face colors - APPLY WORLD TRANSFORM
+        const newPositions = [];
+        const faceColors = [];
+
+        for (let f = 0; f < numFaces; f++) {
+            let i0, i1, i2;
+            if (index) {
+                i0 = index.getX(f * 3);
+                i1 = index.getX(f * 3 + 1);
+                i2 = index.getX(f * 3 + 2);
+            } else {
+                i0 = f * 3;
+                i1 = f * 3 + 1;
+                i2 = f * 3 + 2;
+            }
+
+            // Get vertices and APPLY WORLD TRANSFORM
+            const v0 = new Vector3(position.getX(i0), position.getY(i0), position.getZ(i0));
+            const v1 = new Vector3(position.getX(i1), position.getY(i1), position.getZ(i1));
+            const v2 = new Vector3(position.getX(i2), position.getY(i2), position.getZ(i2));
+
+            v0.applyMatrix4(mesh.matrixWorld);
+            v1.applyMatrix4(mesh.matrixWorld);
+            v2.applyMatrix4(mesh.matrixWorld);
+
+            // Add world-space positions
+            newPositions.push(v0.x, v0.y, v0.z, v1.x, v1.y, v1.z, v2.x, v2.y, v2.z);
+
+            // Encode face ID as RGB (globalFaceOffset + f + 1, reserve 0 for background)
+            const globalFaceId = globalFaceOffset + f + 1;
+            const r = (globalFaceId & 0xFF) / 255;
+            const g = ((globalFaceId >> 8) & 0xFF) / 255;
+            const b = ((globalFaceId >> 16) & 0xFF) / 255;
+
+            // Same color for all 3 vertices of this face
+            faceColors.push(r, g, b, r, g, b, r, g, b);
+        }
+
+        // Create geometry with world-space positions
+        const newGeom = new BufferGeometry();
+        newGeom.setAttribute('position', new BufferAttribute(new Float32Array(newPositions), 3));
+        newGeom.setAttribute('faceColor', new BufferAttribute(new Float32Array(faceColors), 3));
+
+        // Create mesh - no need for matrix since positions are already in world space
+        const faceIdMesh = new Mesh(newGeom, faceIdMaterial);
+        faceIdMeshes.push(faceIdMesh);
+
+        globalFaceOffset += numFaces;
+    }
+
+    // Create temporary scene with ALL face ID meshes
+    const tempScene = new Scene();
+    for (const faceIdMesh of faceIdMeshes) {
+        tempScene.add(faceIdMesh);
+    }
+
+    // Render ALL meshes TOGETHER in one pass
+    renderer.setRenderTarget(renderTarget);
+    renderer.setClearColor(0x000000, 1);
+    renderer.clear();
+    renderer.render(tempScene, camera);
+
+    // Read the render target
+    const faceIdData = new Uint8Array(width * height * 4);
+    renderer.readRenderTargetPixels(renderTarget, 0, 0, width, height, faceIdData);
+
+    // Restore renderer
+    renderer.setRenderTarget(null);
+
+    // Process edges
+    for (const edge of edges) {
+        const midX = (edge.a.x + edge.b.x) / 2;
+        const midY = (edge.a.y + edge.b.y) / 2;
+
+        const sx = Math.round(midX + width / 2);
+        const sy = Math.round(height / 2 + midY);
+
+        if (sx < 0 || sx >= width || sy < 0 || sy >= height) {
+            edge.visible = true;
+            visibleEdges.push(edge);
+            continue;
+        }
+
+        const idx = ((height - 1 - sy) * width + sx) * 4;
+        const r = faceIdData[idx];
+        const g = faceIdData[idx + 1];
+        const b = faceIdData[idx + 2];
+
+        const sampledFaceId = r + (g << 8) + (b << 16);
+
+        // If 0 (background), edge is visible
+        if (sampledFaceId === 0) {
+            edge.visible = true;
+            visibleEdges.push(edge);
+            continue;
+        }
+
+        // Edge parent face ID is faceIdx + 1 (we offset by 1 to reserve 0 for background)
+        const parentFaceId = edge.faceIdx + 1;
+
+        // Edge is visible if sampled face matches parent face
+        if (sampledFaceId === parentFaceId) {
+            edge.visible = true;
+            visibleEdges.push(edge);
+        } else {
+            edge.visible = false;
+        }
+    }
+
+    // Cleanup
+    renderTarget.dispose();
+    faceIdMaterial.dispose();
+    for (const m of faceIdMeshes) {
+        m.geometry.dispose();
+    }
+
+    return visibleEdges;
+}
+
+/**
+ * Pure mathematical point-in-triangle test (2D)
+ * @param {Vector2} p - Point to test
+ * @param {Vector2} a - Triangle vertex A
+ * @param {Vector2} b - Triangle vertex B
+ * @param {Vector2} c - Triangle vertex C
+ * @returns {boolean}
+ */
+function pointInTriangle2D(p, a, b, c) {
+    const sign = (p1, p2, p3) =>
+        (p1.x - p3.x) * (p2.y - p3.y) - (p2.x - p3.x) * (p1.y - p3.y);
+
+    const d1 = sign(p, a, b);
+    const d2 = sign(p, b, c);
+    const d3 = sign(p, c, a);
+
+    const hasNeg = (d1 < 0) || (d2 < 0) || (d3 < 0);
+    const hasPos = (d1 > 0) || (d2 > 0) || (d3 > 0);
+
+    return !(hasNeg && hasPos);
+}
+
+/**
+ * Compute depth at point inside triangle using barycentric interpolation
+ * @param {Vector2} p - Point to compute depth at
+ * @param {Vector2} a - Triangle vertex A (2D)
+ * @param {Vector2} b - Triangle vertex B (2D)
+ * @param {Vector2} c - Triangle vertex C (2D)
+ * @param {number} depthA - Depth at vertex A
+ * @param {number} depthB - Depth at vertex B
+ * @param {number} depthC - Depth at vertex C
+ * @returns {number} - Interpolated depth at p
+ */
+function barycentricDepth(p, a, b, c, depthA, depthB, depthC) {
+    // Compute barycentric coordinates
+    const v0 = { x: c.x - a.x, y: c.y - a.y };
+    const v1 = { x: b.x - a.x, y: b.y - a.y };
+    const v2 = { x: p.x - a.x, y: p.y - a.y };
+
+    const dot00 = v0.x * v0.x + v0.y * v0.y;
+    const dot01 = v0.x * v1.x + v0.y * v1.y;
+    const dot02 = v0.x * v2.x + v0.y * v2.y;
+    const dot11 = v1.x * v1.x + v1.y * v1.y;
+    const dot12 = v1.x * v2.x + v1.y * v2.y;
+
+    const denom = dot00 * dot11 - dot01 * dot01;
+    if (Math.abs(denom) < 1e-10) return Infinity;
+
+    const u = (dot11 * dot02 - dot01 * dot12) / denom;
+    const v = (dot00 * dot12 - dot01 * dot02) / denom;
+    const w = 1 - u - v;
+
+    return w * depthA + v * depthB + u * depthC;
+}
+
+/**
+ * Test edge visibility using pure math (point-in-triangle + depth)
+ * No GPU, no raycasting - fully mathematical
+ * @param {Edge2D[]} edges 
+ * @param {Object[]} projectedFaces - Array of {a2d, b2d, c2d, depthA, depthB, depthC, mesh, faceIdx}
+ * @param {Camera} camera
+ * @returns {Edge2D[]}
+ */
+export function testOcclusionMath(edges, projectedFaces, camera) {
+    const visibleEdges = [];
+    const cameraPos = camera.position;
+
+    let debugHitCount = 0;
+    let debugOccludedCount = 0;
+
+    for (const edge of edges) {
+        // Get midpoint in 2D and 3D
+        const mid2d = new Vector2(
+            (edge.a.x + edge.b.x) / 2,
+            (edge.a.y + edge.b.y) / 2
+        );
+
+        // Compute edge midpoint depth (distance from camera)
+        const mid3d = edge.midpoint3d;
+        const edgeDepth = cameraPos.distanceTo(mid3d);
+
+        let occluded = false;
+
+        // Check against ALL faces
+        for (const face of projectedFaces) {
+            // Skip if this is the edge's parent face
+            if (face.mesh === edge.mesh &&
+                (face.faceIdx === edge.faceIdx || face.faceIdx === edge.faceIdx2)) {
+                continue;
+            }
+
+            // Point-in-triangle test in 2D
+            if (!pointInTriangle2D(mid2d, face.a2d, face.b2d, face.c2d)) {
+                continue;
+            }
+
+            // Compute depth of the face at this 2D point
+            const faceDepthAtPoint = barycentricDepth(
+                mid2d, face.a2d, face.b2d, face.c2d,
+                face.depthA, face.depthB, face.depthC
+            );
+
+            // If face is closer → edge is occluded
+            if (faceDepthAtPoint < edgeDepth - 0.001) {
+                occluded = true;
+                debugOccludedCount++;
+                break;
+            }
+            debugHitCount++;
+        }
+
+        if (!occluded) {
+            edge.visible = true;
+            visibleEdges.push(edge);
+        } else {
+            edge.visible = false;
+        }
+    }
+
+    console.log(`Occlusion debug: ${debugHitCount} point-in-triangle hits, ${debugOccludedCount} occluded`);
     return visibleEdges;
 }
 
@@ -728,7 +1066,7 @@ export function computeHiddenLines(mesh, camera, scene, options = {}) {
     } = options;
 
     console.time('extractEdges');
-    const edges3d = extractEdges(mesh);
+    const edges3d = extractEdges(mesh, camera.position);
     console.timeEnd('extractEdges');
     console.log(`Extracted ${edges3d.length} edges`);
 
@@ -781,9 +1119,19 @@ export function computeHiddenLines(mesh, camera, scene, options = {}) {
         console.log('Skipping occlusion test (debug mode)');
         visibleEdges = splitEdges;
     } else if (renderer) {
-        console.time('testOcclusion (depth buffer)');
-        visibleEdges = testOcclusionDepthBuffer(splitEdges, scene, camera, occlusionEpsilon, width, height, renderer);
-        console.timeEnd('testOcclusion (depth buffer)');
+        console.time('testOcclusion (face ID buffer)');
+        // Separate profile and non-profile edges
+        const profileEdges = splitEdges.filter(e => e.isProfile);
+        const otherEdges = splitEdges.filter(e => !e.isProfile);
+
+        // Profile edges are ALWAYS visible (silhouette edges)
+        profileEdges.forEach(e => e.visible = true);
+
+        // Test occlusion only for non-profile edges using face ID buffer
+        const visibleOtherEdges = testOcclusionFaceID(otherEdges, [mesh], camera, width, height, renderer, false);
+
+        visibleEdges = [...profileEdges, ...visibleOtherEdges];
+        console.timeEnd('testOcclusion (face ID buffer)');
     } else {
         console.time('testOcclusion (raycaster - slow)');
         visibleEdges = testOcclusion(splitEdges, scene, camera, occlusionEpsilon);
@@ -799,5 +1147,147 @@ export function computeHiddenLines(mesh, camera, scene, options = {}) {
     return {
         edges: finalEdges,
         profiles: finalEdges.filter(e => e.isProfile)
+    };
+}
+
+/**
+ * Hidden line removal for multiple meshes with cross-object occlusion
+ * All meshes are rendered to a single face ID buffer for correct occlusion
+ * @param {Mesh[]} meshes 
+ * @param {Camera} camera 
+ * @param {Scene} scene 
+ * @param {Object} options
+ * @param {number} [options.smoothThreshold]
+ * @param {number} [options.gridSize]
+ * @param {boolean} [options.skipOcclusion]
+ * @param {number} [options.width]
+ * @param {number} [options.height]
+ * @param {any} [options.renderer]
+ * @returns {{edges: Edge2D[], profiles: Edge2D[]}}
+ */
+export function computeHiddenLinesMultiple(meshes, camera, scene, options = {}) {
+    const {
+        smoothThreshold = 0.99,
+        gridSize = 32,
+        skipOcclusion = false,
+        width = 800,
+        height = 600,
+        renderer = null
+    } = options;
+
+    // Process each mesh to extract edges (keep local face indices with mesh reference)
+    let allEdges3d = [];
+
+    for (const mesh of meshes) {
+        mesh.updateMatrixWorld(true);
+        const edges3d = extractEdges(mesh, camera.position);
+        // Edges already have mesh reference and local faceIdx1/faceIdx2 from extractEdges
+        allEdges3d.push(...edges3d);
+    }
+
+    console.log(`Extracted ${allEdges3d.length} edges from ${meshes.length} meshes`);
+
+    // SKIP backface filter for debugging - show ALL edges
+    // const frontEdges = filterBackfacing(allEdges3d, camera.position);
+    // console.log(`After backface filter: ${frontEdges.length} edges`);
+
+    // Show ALL edges without any filtering
+    const allEdges = allEdges3d;
+    console.log(`All edges (no filters): ${allEdges.length}`);
+
+    // Project to 2D
+    let edges2d = projectEdges(allEdges, camera, width, height);
+
+    // Mark profile edges
+    // Split all edges at intersections (direct O(n²) comparison - no spatial hash)
+    console.time('splitIntersections');
+    const splitEdges = splitAtIntersections(edges2d);
+    console.timeEnd('splitIntersections');
+    console.log(`After splitting: ${splitEdges.length} edges`);
+
+    // Build projected faces array for math occlusion
+    console.time('buildProjectedFaces');
+    const projectedFaces = [];
+    const cameraPos = camera.position;
+    const halfWidth = width / 2;
+    const halfHeight = height / 2;
+
+    for (const mesh of meshes) {
+        const geom = mesh.geometry;
+        const position = geom.attributes.position;
+        const index = geom.index;
+        const numFaces = index ? index.count / 3 : position.count / 3;
+
+        for (let f = 0; f < numFaces; f++) {
+            let i0, i1, i2;
+            if (index) {
+                i0 = index.getX(f * 3);
+                i1 = index.getX(f * 3 + 1);
+                i2 = index.getX(f * 3 + 2);
+            } else {
+                i0 = f * 3;
+                i1 = f * 3 + 1;
+                i2 = f * 3 + 2;
+            }
+
+            // Get world-space vertices
+            const v0 = new Vector3(position.getX(i0), position.getY(i0), position.getZ(i0)).applyMatrix4(mesh.matrixWorld);
+            const v1 = new Vector3(position.getX(i1), position.getY(i1), position.getZ(i1)).applyMatrix4(mesh.matrixWorld);
+            const v2 = new Vector3(position.getX(i2), position.getY(i2), position.getZ(i2)).applyMatrix4(mesh.matrixWorld);
+
+            // Compute face normal and check if front-facing
+            const edge1 = new Vector3().subVectors(v1, v0);
+            const edge2 = new Vector3().subVectors(v2, v0);
+            const normal = new Vector3().crossVectors(edge1, edge2).normalize();
+            const faceMid = new Vector3().addVectors(v0, v1).add(v2).divideScalar(3);
+            const viewDir = new Vector3().subVectors(cameraPos, faceMid);
+
+            // Only include front-facing faces (back-facing can't occlude)
+            if (normal.dot(viewDir) <= 0) continue;
+
+            // Project to 2D
+            const p0 = v0.clone().project(camera);
+            const p1 = v1.clone().project(camera);
+            const p2 = v2.clone().project(camera);
+
+            // Convert to screen coordinates
+            const a2d = new Vector2(p0.x * halfWidth, -p0.y * halfHeight);
+            const b2d = new Vector2(p1.x * halfWidth, -p1.y * halfHeight);
+            const c2d = new Vector2(p2.x * halfWidth, -p2.y * halfHeight);
+
+            // Compute depths (distance from camera)
+            const depthA = cameraPos.distanceTo(v0);
+            const depthB = cameraPos.distanceTo(v1);
+            const depthC = cameraPos.distanceTo(v2);
+
+            projectedFaces.push({
+                a2d, b2d, c2d,
+                depthA, depthB, depthC,
+                mesh, faceIdx: f
+            });
+        }
+    }
+    console.timeEnd('buildProjectedFaces');
+    console.log(`Built ${projectedFaces.length} projected faces for occlusion`);
+
+    // Occlusion using pure math
+    let visibleEdges;
+    if (skipOcclusion) {
+        visibleEdges = splitEdges;
+    } else {
+        console.time('testOcclusion (math)');
+        // Test ALL edges through occlusion (no special treatment for profiles)
+        visibleEdges = testOcclusionMath(splitEdges, projectedFaces, camera);
+        console.timeEnd('testOcclusion (math)');
+    }
+    console.log(`Visible edges: ${visibleEdges.length}`);
+
+    const finalEdges = optimizeEdges(visibleEdges);
+    console.log(`Final edges: ${finalEdges.length}`);
+
+    return {
+        edges: finalEdges,
+        profiles: finalEdges.filter(e => e.isProfile),
+        allEdges: splitEdges // For debug visualization
     };
 }
