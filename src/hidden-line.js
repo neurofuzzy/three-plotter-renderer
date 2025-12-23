@@ -237,17 +237,18 @@ export function classifyEdges(edges, cameraPosition, smoothThreshold = 0.99) {
  * @param {Camera} camera 
  * @param {number} width 
  * @param {number} height 
+ * @param {number} scale - Internal scale factor for precision (default 1)
  * @returns {Edge2D[]}
  */
-export function projectEdges(edges, camera, width, height) {
+export function projectEdges(edges, camera, width, height, scale = 1) {
     const halfWidth = width / 2;
     const halfHeight = height / 2;
 
     const projectPoint = (p3d) => {
         const projected = p3d.clone().project(camera);
         return new Vector2(
-            projected.x * halfWidth,
-            -projected.y * halfHeight
+            projected.x * halfWidth * scale,
+            -projected.y * halfHeight * scale
         );
     };
 
@@ -1703,7 +1704,8 @@ export function computeHiddenLinesMultiple(meshes, camera, scene, options = {}) 
         skipOcclusion = false,
         width = 800,
         height = 600,
-        renderer = null
+        renderer = null,
+        internalScale = 4  // Scale up internally for better precision
     } = options;
 
     // Process each mesh to extract edges (keep local face indices with mesh reference)
@@ -1725,8 +1727,8 @@ export function computeHiddenLinesMultiple(meshes, camera, scene, options = {}) 
     const allEdges = [...profiles, ...smoothFiltered];
     console.log(`After smooth filter: ${allEdges.length} edges`);
 
-    // Project to 2D
-    let edges2d = projectEdges(allEdges, camera, width, height);
+    // Project to 2D (with internal scale for precision)
+    let edges2d = projectEdges(allEdges, camera, width, height, internalScale);
 
     // Mark profile edges
     // Split all edges at intersections (direct O(n²) comparison - no spatial hash)
@@ -1780,10 +1782,10 @@ export function computeHiddenLinesMultiple(meshes, camera, scene, options = {}) 
             const p1 = v1.clone().project(camera);
             const p2 = v2.clone().project(camera);
 
-            // Convert to screen coordinates
-            const a2d = new Vector2(p0.x * halfWidth, -p0.y * halfHeight);
-            const b2d = new Vector2(p1.x * halfWidth, -p1.y * halfHeight);
-            const c2d = new Vector2(p2.x * halfWidth, -p2.y * halfHeight);
+            // Convert to screen coordinates (with same scale as edges)
+            const a2d = new Vector2(p0.x * halfWidth * internalScale, -p0.y * halfHeight * internalScale);
+            const b2d = new Vector2(p1.x * halfWidth * internalScale, -p1.y * halfHeight * internalScale);
+            const c2d = new Vector2(p2.x * halfWidth * internalScale, -p2.y * halfHeight * internalScale);
 
             // Compute depths (distance from camera)
             const depthA = cameraPos.distanceTo(v0);
@@ -1823,9 +1825,18 @@ export function computeHiddenLinesMultiple(meshes, camera, scene, options = {}) 
     console.timeEnd('optimize');
 
     console.time('cleanup orphans');
-    const finalEdges = cleanupOrphanedEdges(optimizedEdges);
+    const cleanedEdges = cleanupOrphanedEdges(optimizedEdges);
     console.timeEnd('cleanup orphans');
-    console.log(`Final edges: ${finalEdges.length}`);
+    console.log(`Final edges: ${cleanedEdges.length}`);
+
+    // Scale edges back down to original coordinate space
+    for (const edge of cleanedEdges) {
+        edge.a.x /= internalScale;
+        edge.a.y /= internalScale;
+        edge.b.x /= internalScale;
+        edge.b.y /= internalScale;
+    }
+    const finalEdges = cleanedEdges;
 
     return {
         edges: finalEdges,
