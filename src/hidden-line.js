@@ -1768,6 +1768,7 @@ export function computeHiddenLines(mesh, camera, scene, options = {}) {
  * @param {number} [options.height]
  * @param {any} [options.renderer]
  * @param {Edge3D[]} [options.hatchEdges] - Optional array of Edge3D objects for hatching
+ * @param {number} [options.minHatchDotProduct] - Minimum dot product with view vector to keep hatch edges (0-1)
  * @param {number} [options.internalScale] - Internal scale factor (default: 4)
  * @param {number} [options.distanceThreshold] - Distance threshold for coplanar detection (default: 0.5)
  * @returns {{edges: Edge2D[], profiles: Edge2D[]}}
@@ -1810,7 +1811,19 @@ export function computeHiddenLinesMultiple(meshes, camera, scene, options = {}) 
     if (options.hatchEdges && options.hatchEdges.length > 0) {
         console.log(`Processing ${options.hatchEdges.length} hatch edges...`);
         // Filter backfacing hatch edges
-        const visibleHatch = filterBackfacing(options.hatchEdges, camera.position);
+        let visibleHatch = filterBackfacing(options.hatchEdges, camera.position);
+
+        // Filter over-dense hatching based on view angle
+        if (options.minHatchDotProduct !== undefined) {
+            const threshold = options.minHatchDotProduct;
+            visibleHatch = visibleHatch.filter(edge => {
+                const edgeMidpoint = new Vector3().addVectors(edge.a, edge.b).multiplyScalar(0.5);
+                const viewDir = new Vector3().subVectors(camera.position, edgeMidpoint).normalize();
+                const dot = edge.normal1.dot(viewDir);
+                return Math.abs(dot) >= threshold;
+            });
+            console.log(`Density filter: kept ${visibleHatch.length} hatch edges (threshold ${threshold})`);
+        }
 
         // Project
         const hatch2d = projectEdges(visibleHatch, camera, width, height, internalScale);

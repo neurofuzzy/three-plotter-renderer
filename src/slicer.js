@@ -11,23 +11,17 @@ export class Slicer {
      * @param {import("three").Mesh} mesh 
      * @param {Object} options
      * @param {number} [options.spacing] - Spacing between hatch lines (default: 0.5)
+     * @param {number} [options.offset] - Offset for plane spacing (default: 0)
      * @param {Vector3} [options.normal] - Normal of the slicing planes (default: Y axis [0,1,0])
      * @param {number} [options.rotation] - Rotation around Y axis in degrees (alternative to normal)
      * @returns {Array} List of edge objects {a: Vector3, b: Vector3, ...}
      */
     static computeSlices(mesh, options = {}) {
         const spacing = options.spacing || 0.5;
+        const offset = options.offset || 0;
         let normal = options.normal ? options.normal.clone().normalize() : new Vector3(0, 1, 0);
 
         if (options.rotation !== undefined && !options.normal) {
-            // Create normal from rotation around Y axis (assuming default hatch is X-Z plane slices? No, usually X-Y plane slices over Z?)
-            // "World aligned hatching" usually means horizontal slices (like 3D printing) or slices along some direction.
-            // Let's assume default is "scanlines" along X-Z plane (normal = Y), or maybe vertical slices?
-            // User asked for "world-aligned hatching instead of screen aligned", and "take slices of our models at small intervals".
-            // Let's support arbitrary normal but verify what "rotation" implies.
-            // If rotation is given, maybe we rotate the default normal (0,0,1)?
-            // Let's stick to explicit normal for now, or just rotate (1,0,0) around Y? 
-            // Let's implement rotation as rotating the cutting plane normal around Y.
             // Default cutting normal: (1, 0, 0) -> vertical slices along X axis
             normal = new Vector3(1, 0, 0).applyAxisAngle(new Vector3(0, 1, 0), (options.rotation * Math.PI) / 180);
         }
@@ -41,32 +35,6 @@ export class Slicer {
         const index = geometry.index;
         const position = geometry.attributes.position;
         const numFaces = index ? index.count / 3 : position.count / 3;
-
-        // Compute world AABB to determine slice range
-        // We can't use mesh.geometry.boundingBox directly because it's local.
-        // We need min/max projected onto the normal.
-        let minD = Infinity;
-        let maxD = -Infinity;
-
-        // Helper to get world vertex
-        const v = new Vector3();
-        const getV = (i) => {
-            v.set(position.getX(i), position.getY(i), position.getZ(i));
-            return v.applyMatrix4(mesh.matrixWorld);
-        };
-
-        // First pass: find range
-        for (let i = 0; i < position.count; i++) {
-            const worldV = getV(i);
-            const d = worldV.dot(normal);
-            if (d < minD) minD = d;
-            if (d > maxD) maxD = d;
-        }
-
-        // Align start to spacing grid
-        const startD = Math.ceil(minD / spacing) * spacing;
-
-        if (startD > maxD) return [];
 
         // Prepare face vertices (allocated once)
         const v0 = new Vector3();
@@ -105,14 +73,16 @@ export class Slicer {
             const maxFaceD = Math.max(d0, Math.max(d1, d2));
 
             // Determine which planes intersect this face
-            const startPlaneIdx = Math.ceil(minFaceD / spacing);
-            const endPlaneIdx = Math.floor(maxFaceD / spacing);
+            // Plane equation: d = k * spacing + offset
+            // we want minFaceD <= k * spacing + offset <= maxFaceD
+            // (minFaceD - offset) / spacing <= k <= (maxFaceD - offset) / spacing
+            const startPlaneIdx = Math.ceil((minFaceD - offset) / spacing);
+            const endPlaneIdx = Math.floor((maxFaceD - offset) / spacing);
 
             for (let i = startPlaneIdx; i <= endPlaneIdx; i++) {
-                const planeD = i * spacing;
+                const planeD = i * spacing + offset;
 
                 // Find intersection segment
-                // A triangle-plane intersection is a line segment connecting two edge intersections
                 const intersections = [];
 
                 // Check edge v0-v1
