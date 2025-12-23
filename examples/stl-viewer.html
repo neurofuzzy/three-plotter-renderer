@@ -5,27 +5,82 @@
     <meta charset="utf-8">
     <title>STL Hidden Line Viewer</title>
     <style>
-        body {
+        * {
             margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg-dark: #1a1a2e;
+            --bg-glass: rgba(22, 33, 62, 0.85);
+            --accent: #0f3460;
+            --accent-hover: #e94560;
+            --text: #eaeaea;
+            --text-muted: #a0a0a0;
+            --border: rgba(255, 255, 255, 0.1);
+        }
+
+        body {
             overflow: hidden;
-            font-family: sans-serif;
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background: var(--bg-dark);
+            color: var(--text);
         }
 
         #info {
             position: absolute;
-            top: 10px;
-            left: 10px;
-            color: white;
-            background: rgba(0, 0, 0, 0.7);
-            padding: 10px;
+            top: 16px;
+            left: 16px;
+            background: var(--bg-glass);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 16px 20px;
             z-index: 100;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
         }
 
-        #info button {
-            padding: 8px 16px;
+        #info .controls {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        #info button,
+        #info select {
+            padding: 10px 18px;
             font-size: 14px;
             cursor: pointer;
-            margin-right: 10px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            background: var(--accent);
+            color: var(--text);
+            transition: all 0.2s ease;
+            font-family: inherit;
+        }
+
+        #info button:hover,
+        #info select:hover {
+            background: var(--accent-hover);
+            border-color: var(--accent-hover);
+        }
+
+        #info select {
+            background: rgba(15, 52, 96, 0.8);
+        }
+
+        #info select option {
+            background: #16213e;
+            color: var(--text);
+        }
+
+        #stats {
+            margin-top: 12px;
+            font-size: 13px;
+            color: var(--text-muted);
         }
 
         canvas {
@@ -43,7 +98,12 @@
 
 <body>
     <div id="info">
-        <div>
+        <div class="controls">
+            <select id="modelSelect">
+                <option value="./models/example01.stl">Example 01 (Building)</option>
+                <option value="./models/example02.stl">Example 02 (Complex)</option>
+                <option value="./models/example03.stl" selected>Example 03 (House)</option>
+            </select>
             <button id="renderBtn">Render Hidden Lines</button>
             <button id="exportBtn">Export SVG</button>
         </div>
@@ -82,9 +142,41 @@
             scene.add(light);
             scene.add(new THREE.AmbientLight(0x404040));
 
-            // Load STL
+            // Setup SVG overlay
+            const svg = document.getElementById('svg-overlay');
+            svg.setAttribute('width', window.innerWidth);
+            svg.setAttribute('height', window.innerHeight);
+
+            // Event listeners
+            window.addEventListener('resize', onResize);
+            document.getElementById('renderBtn').addEventListener('click', computeAndDraw);
+            document.getElementById('exportBtn').addEventListener('click', exportSVG);
+            document.getElementById('modelSelect').addEventListener('change', (e) => {
+                loadModel(e.target.value);
+            });
+
+            // Load default model
+            loadModel(document.getElementById('modelSelect').value);
+
+            animate();
+        }
+
+        function loadModel(url) {
+            document.getElementById('stats').textContent = 'Loading model...';
+
+            // Clear existing mesh
+            if (mesh) {
+                scene.remove(mesh);
+                mesh.geometry.dispose();
+                mesh.material.dispose();
+                mesh = null;
+            }
+
+            // Clear SVG
+            document.getElementById('svg-overlay').innerHTML = '';
+
             const loader = new STLLoader();
-            loader.load('./models/example03.stl', (geometry) => {
+            loader.load(url, (geometry) => {
                 geometry.computeBoundingBox();
                 geometry.center();
 
@@ -101,18 +193,6 @@
                 document.getElementById('stats').textContent =
                     `Loaded ${geometry.attributes.position.count / 3} triangles. Click "Render Hidden Lines" when ready.`;
             });
-
-            // Setup SVG overlay
-            const svg = document.getElementById('svg-overlay');
-            svg.setAttribute('width', window.innerWidth);
-            svg.setAttribute('height', window.innerHeight);
-
-            // Event listeners
-            window.addEventListener('resize', onResize);
-            document.getElementById('renderBtn').addEventListener('click', computeAndDraw);
-            document.getElementById('exportBtn').addEventListener('click', exportSVG);
-
-            animate();
         }
 
         function onResize() {
@@ -155,47 +235,13 @@
                     `Rendered ${result.edges.length} visible / ${result.allEdges?.length || 0} total edges in ${elapsed.toFixed(0)}ms`;
 
                 drawToSVG(result.edges, result.allEdges);
-
-                // Expose edges globally for console debugging
-                window.stragglersDebug = {
-                    edges: result.edges,
-                    projectedFaces: result.projectedFaces || [],  // For face visualization
-                    tJunctionEdges: result.edges.filter(e => e.isTJunctionStraggler),
-                    normalEdges: result.edges.filter(e => !e.isTJunctionStraggler),
-                    selected: new Set(),
-
-                    // Mark selected edges as actual stragglers
-                    markSelectedAsStragglers: function () {
-                        const realStragglers = this.tJunctionEdges.filter((_, i) => this.selected.has(i));
-                        const falseStragglers = this.tJunctionEdges.filter((_, i) => !this.selected.has(i));
-                        console.log('Real stragglers:', realStragglers.length);
-                        console.log('False positives:', falseStragglers.length);
-                        return { realStragglers, falseStragglers };
-                    },
-
-                    // Get edge info
-                    getEdgeInfo: function (idx) {
-                        const e = this.tJunctionEdges[idx];
-                        return {
-                            idx,
-                            faceIdx: e.faceIdx,
-                            mesh: e.mesh?.name,
-                            normal1: e.normal1 ? [e.normal1.x, e.normal1.y, e.normal1.z] : null,
-                            length: Math.sqrt((e.b.x - e.a.x) ** 2 + (e.b.y - e.a.y) ** 2)
-                        };
-                    }
-                };
-                console.log('Debug: window.stragglersDebug available');
-                console.log('T-junction edges:', window.stragglersDebug.tJunctionEdges.length);
-                console.log('Click red edges to toggle selection (cyan = selected)');
-                console.log('Call window.stragglersDebug.markSelectedAsStragglers() when done');
             }, 50);
         }
 
         function drawToSVG(edges, allEdges) {
             const svg = document.getElementById('svg-overlay');
             svg.innerHTML = '';
-            svg.style.pointerEvents = 'auto';  // Enable clicks
+            // pointer-events: none is set in CSS, do not override it
 
             const halfWidth = window.innerWidth / 2;
             const halfHeight = window.innerHeight / 2;
@@ -240,20 +286,12 @@
                 path.setAttribute('fill', 'none');
                 svg.appendChild(path);
             } else {
-                // NORMAL MODE: All edges clickable, draw adjacent faces on click
-
-                // Create a group for face polygons (drawn first, behind edges)
-                const facesGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-                facesGroup.id = 'face-highlights';
-                svg.appendChild(facesGroup);
-
-                // Create edges group
+                // Normal rendering: Draw all visible edges
                 const edgesGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
                 edgesGroup.id = 'edges';
                 svg.appendChild(edgesGroup);
 
-                // Draw each edge as clickable line
-                let edgeIndex = 0;
+                // Draw each edge
                 for (const edge of edges) {
                     const x1 = edge.a.x + halfWidth;
                     const y1 = halfHeight + edge.a.y;
@@ -265,102 +303,11 @@
                     line.setAttribute('y1', y1);
                     line.setAttribute('x2', x2);
                     line.setAttribute('y2', y2);
-                    line.setAttribute('stroke', edge.isCoplanarCandidate ? '#ff0000' : '#000000');
-                    line.setAttribute('stroke-width', edge.isCoplanarCandidate ? '3' : '1.5');
-                    line.setAttribute('data-idx', edgeIndex);
-                    line.style.cursor = 'pointer';
-
-                    // Click handler - show adjacent faces
-                    const edgeRef = edge;
-                    const idx = edgeIndex;
-                    line.addEventListener('click', (e) => {
-                        e.stopPropagation();
-
-                        // Clear previous face highlights
-                        facesGroup.innerHTML = '';
-
-                        // Highlight clicked edge
-                        document.querySelectorAll('#edges line').forEach(l => {
-                            const origColor = l.getAttribute('data-original-color') || l.getAttribute('stroke');
-                            l.setAttribute('stroke', origColor);
-                        });
-                        line.setAttribute('data-original-color', line.getAttribute('stroke'));
-                        line.setAttribute('stroke', '#00ffff');
-
-                        // Get projected faces from debug object
-                        const projFaces = window.stragglersDebug?.projectedFaces || [];
-
-                        // Find ALL faces adjacent to this edge geometrically
-                        const adjacentFaces = findAdjacentFaces(edgeRef, projFaces);
-
-                        // Color palette for multiple faces
-                        const colors = [
-                            { fill: 'rgba(0, 255, 0, 0.3)', stroke: '#00ff00' },      // Green
-                            { fill: 'rgba(255, 0, 255, 0.3)', stroke: '#ff00ff' },    // Magenta
-                            { fill: 'rgba(255, 255, 0, 0.3)', stroke: '#ffff00' },    // Yellow
-                            { fill: 'rgba(0, 255, 255, 0.3)', stroke: '#00ffff' },    // Cyan
-                            { fill: 'rgba(255, 128, 0, 0.3)', stroke: '#ff8000' }     // Orange
-                        ];
-
-                        // Draw all matched faces
-                        adjacentFaces.forEach((match, i) => {
-                            const face = match.face;
-                            const color = colors[i % colors.length];
-
-                            const poly = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
-                            const pts = [
-                                `${face.a2d.x + halfWidth},${halfHeight + face.a2d.y}`,
-                                `${face.b2d.x + halfWidth},${halfHeight + face.b2d.y}`,
-                                `${face.c2d.x + halfWidth},${halfHeight + face.c2d.y}`
-                            ].join(' ');
-                            poly.setAttribute('points', pts);
-                            poly.setAttribute('fill', color.fill);
-                            poly.setAttribute('stroke', color.stroke);
-                            poly.setAttribute('stroke-width', '2');
-                            facesGroup.appendChild(poly);
-                        });
-
-                        // Log edge info
-                        const n1 = edgeRef.normal1;
-                        const n2 = edgeRef.normal2;
-                        console.log(`--- Edge ${idx} ---`);
-                        console.log(`  isCoplanarCandidate: ${edgeRef.isCoplanarCandidate || false} (faceSimilarity: ${edgeRef.faceSimilarity?.toFixed(4) || 'N/A'})`);
-                        console.log(`  adjacentFaceCount: ${edgeRef.adjacentFaceCount || 0}`);
-                        console.log(`  Original faceIdx: ${edgeRef.faceIdx}, faceIdx2: ${edgeRef.faceIdx2 ?? 'none'}`);
-                        console.log(`  Geometric matches: ${adjacentFaces.length} faces found`);
-
-                        // Log each matched face with its normal
-                        adjacentFaces.forEach((match, i) => {
-                            const fn = match.face.normal;
-                            const normalStr = fn ? `[${fn.x.toFixed(3)}, ${fn.y.toFixed(3)}, ${fn.z.toFixed(3)}]` : 'MISSING';
-                            console.log(`    Face ${i}: faceIdx=${match.face.faceIdx}, edge=${match.matchedEdge}, normal=${normalStr}`);
-                        });
-
-                        // If we have 2+ faces, check if they're coplanar
-                        if (adjacentFaces.length >= 2) {
-                            const fn1 = adjacentFaces[0].face.normal;
-                            const fn2 = adjacentFaces[1].face.normal;
-                            if (fn1 && fn2) {
-                                const dot = fn1.dot(fn2);
-                                console.log(`  Face normal similarity: ${dot.toFixed(4)} (>0.99 = COPLANAR/SMOOTH)`);
-                                if (Math.abs(dot) > 0.99) {
-                                    console.log(`  ⚠️ This edge lies between COPLANAR faces - potential straggler!`);
-                                }
-                            }
-                        } else {
-                            console.log(`  ⚠️ Only ${adjacentFaces.length} face(s) - true boundary edge`);
-                        }
-
-                        console.log(`  Original normal1: ${n1 ? `[${n1.x.toFixed(3)}, ${n1.y.toFixed(3)}, ${n1.z.toFixed(3)}]` : 'MISSING'}`);
-                        console.log(`  Original normal2: ${n2 ? `[${n2.x.toFixed(3)}, ${n2.y.toFixed(3)}, ${n2.z.toFixed(3)}]` : 'none (boundary)'}`);
-                        if (n1 && n2) {
-                            const dot = n1.dot(n2);
-                            console.log(`  Original normal similarity: ${dot.toFixed(4)}`);
-                        }
-                    });
+                    line.setAttribute('stroke', '#000000');
+                    line.setAttribute('stroke-width', '1.5');
+                    line.setAttribute('stroke-linecap', 'round');
 
                     edgesGroup.appendChild(line);
-                    edgeIndex++;
                 }
             }
         }

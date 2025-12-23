@@ -1529,6 +1529,46 @@ export function cleanupOrphanedEdges(edges, tolerance = 1.0, maxExtension = 50) 
 }
 
 /**
+ * Remove isolated edges where BOTH endpoints are orphaned (no connections to other edges)
+ * These are floating edge fragments that don't connect to anything
+ * @param {Edge2D[]} edges - Edges to filter
+ * @param {number} tolerance - Distance tolerance for vertex matching
+ * @returns {Edge2D[]} Filtered edges
+ */
+export function removeIsolatedEdges(edges, tolerance = 1.0) {
+    const vertexKey = (p) => `${Math.round(p.x / tolerance)},${Math.round(p.y / tolerance)}`;
+
+    // Count connections per vertex
+    const vertexConnections = new Map();
+
+    for (const edge of edges) {
+        const keyA = vertexKey(edge.a);
+        const keyB = vertexKey(edge.b);
+
+        vertexConnections.set(keyA, (vertexConnections.get(keyA) || 0) + 1);
+        vertexConnections.set(keyB, (vertexConnections.get(keyB) || 0) + 1);
+    }
+
+    // Filter out edges where both endpoints have only 1 connection (orphaned at both ends)
+    const filtered = edges.filter(edge => {
+        const keyA = vertexKey(edge.a);
+        const keyB = vertexKey(edge.b);
+        const connectionsA = vertexConnections.get(keyA) || 0;
+        const connectionsB = vertexConnections.get(keyB) || 0;
+
+        // Keep edge if at least one endpoint has 2+ connections
+        return connectionsA >= 2 || connectionsB >= 2;
+    });
+
+    const removed = edges.length - filtered.length;
+    if (removed > 0) {
+        console.log(`Edge cleanup: removed ${removed} isolated edges (orphaned at both ends)`);
+    }
+
+    return filtered;
+}
+
+/**
  * Check if a segment from p1 to p2 crosses any existing edge
  * @param {Vector2} p1 - Start point
  * @param {Vector2} p2 - End point
@@ -1827,16 +1867,19 @@ export function computeHiddenLinesMultiple(meshes, camera, scene, options = {}) 
     console.time('cleanup orphans');
     const cleanedEdges = cleanupOrphanedEdges(optimizedEdges);
     console.timeEnd('cleanup orphans');
-    console.log(`Final edges: ${cleanedEdges.length}`);
+
+    // Remove completely isolated edges (orphaned at both ends)
+    const filteredEdges = removeIsolatedEdges(cleanedEdges);
+    console.log(`Final edges: ${filteredEdges.length}`);
 
     // Scale edges back down to original coordinate space
-    for (const edge of cleanedEdges) {
+    for (const edge of filteredEdges) {
         edge.a.x /= internalScale;
         edge.a.y /= internalScale;
         edge.b.x /= internalScale;
         edge.b.y /= internalScale;
     }
-    const finalEdges = cleanedEdges;
+    const finalEdges = filteredEdges;
 
     return {
         edges: finalEdges,
