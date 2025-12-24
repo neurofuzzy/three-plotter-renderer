@@ -136,6 +136,7 @@
             <button id="gpuSilBtn" style="background: #5a2d5a;">GPU Silhouettes</button>
             <button id="debugDepthBtn" style="background: #5a5a2d;">Debug Depth</button>
             <button id="gpuHatchBtn" style="background: #2d5a5a;">GPU Hatches</button>
+            <button id="fullRenderBtn" style="background: #2d8a5a; font-weight: bold;">⚡ Full Render</button>
             <label
                 style="display: flex; align-items: center; gap: 6px; margin-left: 10px; border-left: 1px solid var(--border); padding-left: 10px; cursor: pointer;">
                 <input type="checkbox" id="wasmToggle" checked style="width: 16px; height: 16px; cursor: pointer;">
@@ -208,6 +209,8 @@
             });
             // GPU Hatches button
             document.getElementById('gpuHatchBtn').addEventListener('click', testGpuHatches);
+            // Full Render button
+            document.getElementById('fullRenderBtn').addEventListener('click', fullRender);
             // Load default model
             loadModel(document.getElementById('modelSelect').value);
 
@@ -678,6 +681,106 @@
             console.timeEnd('GPU Hatches');
             document.getElementById('stats').textContent =
                 `GPU Hatches: ${regions.length} regions, ${totalHatches} hatch lines`;
+        }
+
+        /**
+         * Full Render: Hidden line edges + GPU perspective hatches
+         */
+        async function fullRender() {
+            if (!mesh) {
+                document.getElementById('stats').textContent = 'Please load a model first';
+                return;
+            }
+
+            document.getElementById('stats').textContent = 'Full Render: Computing hidden lines...';
+
+            const svg = document.getElementById('svg-overlay');
+            svg.innerHTML = '';
+            svg.setAttribute('width', window.innerWidth);
+            svg.setAttribute('height', window.innerHeight);
+
+            const w2 = window.innerWidth / 2;
+            const h2 = window.innerHeight / 2;
+
+            console.time('Full Render');
+
+            // Step 1: Compute hidden lines (JS implementation)
+            console.time('Hidden Lines');
+            const result = computeHiddenLinesMultiple([mesh], camera, scene, {
+                smoothThreshold: 0.99,
+                width: window.innerWidth,
+                height: window.innerHeight
+            });
+            const edges = result.edges || [];
+            console.timeEnd('Hidden Lines');
+
+            // Draw visible edges (white for profiles, light gray for creases)
+            edges.forEach(edge => {
+                const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                line.setAttribute('x1', edge.a.x + w2);
+                line.setAttribute('y1', edge.a.y + h2);  // No Y flip for hidden line edges
+                line.setAttribute('x2', edge.b.x + w2);
+                line.setAttribute('y2', edge.b.y + h2);
+                line.setAttribute('stroke', edge.isProfile ? 'white' : '#ccc');
+                line.setAttribute('stroke-width', edge.isProfile ? '1.5' : '1');
+                svg.appendChild(line);
+            });
+
+            const edgeCount = edges.length;
+
+            // Step 2: GPU Hatches
+            document.getElementById('stats').textContent = 'Full Render: Generating hatches...';
+            console.time('GPU Hatches');
+
+            const regions = extractNormalRegions(renderer, scene, camera, {
+                normalBuckets: 12,
+                simplifyTolerance: 2.0,
+                minArea: 100,
+                insetPixels: 3
+            });
+
+            // Sort by depth (front first)
+            regions.sort((a, b) => a.depth - b.depth);
+            const allRegionBounds = regions.map(r => r.boundary);
+
+            let totalHatches = 0;
+
+            regions.forEach((region, idx) => {
+                let hatches = generatePerspectiveHatches(region, camera, {
+                    baseSpacing: 8,
+                    minSpacing: 3,
+                    maxSpacing: 20,
+                    depthFactor: 0.5,
+                    screenWidth: window.innerWidth,
+                    screenHeight: window.innerHeight
+                });
+
+                // Clip against front regions
+                for (let frontIdx = 0; frontIdx < idx; frontIdx++) {
+                    hatches = hatches.flatMap(hatch =>
+                        clipLineOutsidePolygon(hatch, allRegionBounds[frontIdx])
+                    );
+                }
+
+                totalHatches += hatches.length;
+
+                hatches.forEach(hatch => {
+                    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                    line.setAttribute('x1', hatch.start.x + w2);
+                    line.setAttribute('y1', -hatch.start.y + h2);
+                    line.setAttribute('x2', hatch.end.x + w2);
+                    line.setAttribute('y2', -hatch.end.y + h2);
+                    line.setAttribute('stroke', '#aaa');  // Light gray hatches
+                    line.setAttribute('stroke-width', '0.5');
+                    svg.appendChild(line);
+                });
+            });
+
+            console.timeEnd('GPU Hatches');
+            console.timeEnd('Full Render');
+
+            document.getElementById('stats').textContent =
+                `Full Render: ${edgeCount} edges, ${totalHatches} hatches (${regions.length} regions)`;
         }
 
         function animate() {
