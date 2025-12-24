@@ -131,6 +131,7 @@
                     title="Z Spacing">
             </div>
             <button id="renderBtn">Render Hidden Lines</button>
+            <button id="wasmBtn" style="background: #2d5a27;">WASM Full Pipeline</button>
             <button id="exportBtn">Export SVG</button>
             <label
                 style="display: flex; align-items: center; gap: 6px; margin-left: 10px; border-left: 1px solid var(--border); padding-left: 10px; cursor: pointer;">
@@ -147,7 +148,7 @@
         import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js';
         import { computeHiddenLinesMultiple, findAdjacentFaces } from '../src/hidden-line.js';
         import { Slicer } from '../src/slicer.js';
-        import { setWasmEnabled, getWasmEnabled, isWasmReady } from '../src/wasm-geometry.js';
+        import { setWasmEnabled, getWasmEnabled, isWasmReady, createHiddenLineProcessor } from '../src/wasm-geometry.js';
 
         let scene, camera, renderer, controls, mesh;
 
@@ -192,6 +193,8 @@
             document.getElementById('wasmToggle').addEventListener('change', (e) => {
                 setWasmEnabled(e.target.checked);
             });
+            // WASM Full Pipeline button
+            document.getElementById('wasmBtn').addEventListener('click', computeWASM);
             // Load default model
             loadModel(document.getElementById('modelSelect').value);
 
@@ -240,6 +243,93 @@
             const svg = document.getElementById('svg-overlay');
             svg.setAttribute('width', window.innerWidth);
             svg.setAttribute('height', window.innerHeight);
+        }
+
+        // WASM Full Pipeline
+        function computeWASM() {
+            if (!mesh) {
+                alert('Model not loaded yet');
+                return;
+            }
+
+            document.getElementById('stats').textContent = 'Computing via WASM full pipeline...';
+            const svg = document.getElementById('svg-overlay');
+            svg.innerHTML = '';
+
+            setTimeout(() => {
+                const startTime = performance.now();
+
+                const processor = createHiddenLineProcessor();
+                if (!processor) {
+                    document.getElementById('stats').textContent = 'WASM not available!';
+                    return;
+                }
+
+                processor.setMeshes([mesh]);
+                processor.setCamera(camera, window.innerWidth, window.innerHeight);
+                processor.setHatchConfig([0, 1, 0], 10); // Horizontal slices with 10 unit spacing (STL scale)
+
+                const edges = processor.compute();
+
+                const elapsed = performance.now() - startTime;
+                document.getElementById('stats').textContent =
+                    `WASM Full Pipeline: ${edges.length} edges in ${elapsed.toFixed(0)}ms`;
+
+                drawWASMEdges(edges);
+            }, 50);
+        }
+
+        function drawWASMEdges(edges) {
+            const svg = document.getElementById('svg-overlay');
+            const halfWidth = window.innerWidth / 2;
+            const halfHeight = window.innerHeight / 2;
+
+            let silhouetteD = '';
+            let creaseD = '';
+            let hatchD = '';
+
+            for (const edge of edges) {
+                const x1 = edge.x1 + halfWidth;
+                const y1 = halfHeight + edge.y1;
+                const x2 = edge.x2 + halfWidth;
+                const y2 = halfHeight + edge.y2;
+
+                if (edge.type === 'silhouette') {
+                    silhouetteD += `M${x1},${y1}L${x2},${y2}`;
+                } else if (edge.type === 'hatch') {
+                    hatchD += `M${x1},${y1}L${x2},${y2}`;
+                } else {
+                    creaseD += `M${x1},${y1}L${x2},${y2}`;
+                }
+            }
+
+            // Draw hatch lines first (behind edges)
+            if (hatchD) {
+                const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                path.setAttribute('d', hatchD);
+                path.setAttribute('stroke', '#aaaaaa');
+                path.setAttribute('stroke-width', '0.5');
+                path.setAttribute('fill', 'none');
+                svg.appendChild(path);
+            }
+
+            if (silhouetteD) {
+                const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                path.setAttribute('d', silhouetteD);
+                path.setAttribute('stroke', '#000000');
+                path.setAttribute('stroke-width', '2');
+                path.setAttribute('fill', 'none');
+                svg.appendChild(path);
+            }
+
+            if (creaseD) {
+                const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                path.setAttribute('d', creaseD);
+                path.setAttribute('stroke', '#ffffff');
+                path.setAttribute('stroke-width', '1');
+                path.setAttribute('fill', 'none');
+                svg.appendChild(path);
+            }
         }
 
         function computeAndDraw() {

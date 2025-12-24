@@ -1069,12 +1069,13 @@ impl HiddenLineProcessor {
         // Step 4: Build spatial hash for O(1) neighbor lookup
         let hash = SpatialHash::new(&classified, 50.0);
         
-        // Step 5: Generate hatch lines from geometry
-        let hatch_edges = self.generate_hatches(&projected);
-        
-        // Step 6: Combine classified edges with hatches
+        // Step 5: Generate hatch lines from geometry (disabled for debugging)
+        const HATCHING_ENABLED: bool = false;
         let mut all_edges = classified;
-        all_edges.extend(hatch_edges);
+        if HATCHING_ENABLED {
+            let hatch_edges = self.generate_hatches(&projected);
+            all_edges.extend(hatch_edges);
+        }
         
         // Step 7: Find intersections and split edges
         let split_edges = self.split_at_intersections(&all_edges, &hash);
@@ -1228,13 +1229,17 @@ impl HiddenLineProcessor {
             let m = &self.view_proj;
             let clip_x = m[0] * x + m[4] * y + m[8] * z + m[12];
             let clip_y = m[1] * x + m[5] * y + m[9] * z + m[13];
-            let clip_z = m[2] * x + m[6] * y + m[10] * z + m[14];
             let clip_w = m[3] * x + m[7] * y + m[11] * z + m[15];
             
             // Perspective divide
             let ndc_x = clip_x / clip_w;
             let ndc_y = clip_y / clip_w;
-            let depth = clip_z / clip_w;
+            
+            // Compute depth as distance from camera (like JS version)
+            let dx = x - self.camera_pos[0];
+            let dy = y - self.camera_pos[1];
+            let dz = z - self.camera_pos[2];
+            let depth = (dx * dx + dy * dy + dz * dz).sqrt();
             
             // Screen coordinates
             let screen_x = ndc_x * half_w;
@@ -1324,22 +1329,21 @@ impl HiddenLineProcessor {
                     // Both faces back-facing: skip edge entirely
                     EdgeType::Interior
                 } else if face1_front != face2_front {
-                    // One front, one back: silhouette edge
-                    EdgeType::Silhouette
+                    // One front, one back: visible edge
+                    EdgeType::Crease
                 } else if dot < self.crease_threshold {
-                    // Both front-facing but with a crease
+                    // Both front-facing but with a crease: visible edge
                     EdgeType::Crease
                 } else {
                     // Both front-facing and smooth
                     EdgeType::Interior
                 }
             } else {
-                // Boundary edge (only one face)
+                // Boundary edge (only one face) - vertex merging didn't find the neighbor
+                // BUT this is still a real crease edge if the face is front-facing
                 if face1_front {
-                    // Face is front-facing: show as silhouette
-                    EdgeType::Silhouette
+                    EdgeType::Crease
                 } else {
-                    // Face is back-facing: don't show
                     EdgeType::Interior
                 }
             };
@@ -1534,7 +1538,9 @@ impl HiddenLineProcessor {
                 );
                 
                 // If triangle is closer, edge is occluded
-                if tri_depth < mid_depth - 0.001 {
+                // Use relative epsilon (0.1% of depth) for large-scale models
+                let epsilon = mid_depth * 0.001;
+                if tri_depth < mid_depth - epsilon {
                     occluded = true;
                     break;
                 }
