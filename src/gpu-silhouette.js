@@ -36,9 +36,9 @@ import {
  */
 export function extractNormalRegions(renderer, scene, camera, options = {}) {
     const {
-        resolution = 1.0,
-        normalBuckets = 12,  // Quantize normals into N directions
-        minArea = 100,       // Minimum region area in pixels
+        resolution = 4.0,        // Render at 4x for smooth boundaries
+        normalBuckets = 12,      // Quantize normals into N directions
+        minArea = 100,           // Minimum region area in pixels (at output scale)
         simplifyTolerance = 2.0
     } = options;
 
@@ -77,7 +77,7 @@ export function extractNormalRegions(renderer, scene, camera, options = {}) {
         regions.push({
             boundary: simplified.map(p => new Vector2(
                 (p.x / resolution) - size.x / 2,
-                -(p.y / resolution) + size.y / 2
+                (p.y / resolution) - size.y / 2  // Y already flipped during readback
             )),
             normal,
             area: area / (resolution * resolution),
@@ -98,13 +98,22 @@ function renderNormals(renderer, scene, camera, width, height) {
         magFilter: NearestFilter
     });
 
-    const normalMaterial = new MeshNormalMaterial();
+    const normalMaterial = new MeshNormalMaterial({ flatShading: true });
 
     const originalMaterials = new Map();
+    const hiddenObjects = [];
+
     scene.traverse(obj => {
+        // Only render Mesh objects, hide helpers/lines
         if (obj.isMesh) {
             originalMaterials.set(obj, obj.material);
             obj.material = normalMaterial;
+        } else if (obj.isLineSegments || obj.isLine || obj.isPoints) {
+            // Hide grid helpers, line helpers, etc.
+            if (obj.visible) {
+                hiddenObjects.push(obj);
+                obj.visible = false;
+            }
         }
     });
 
@@ -116,6 +125,12 @@ function renderNormals(renderer, scene, camera, width, height) {
             obj.material = originalMaterials.get(obj);
         }
     });
+
+    // Restore hidden objects (grid helpers, lines, etc.)
+    for (const obj of hiddenObjects) {
+        obj.visible = true;
+    }
+
     renderer.setRenderTarget(null);
 
     const pixels = new Uint8Array(width * height * 4);
@@ -154,11 +169,13 @@ function quantizeNormals(pixels, width, height, buckets) {
         const ny = (g / 255) * 2 - 1;
         const nz = (b / 255) * 2 - 1;
 
-        // Quantize to buckets
-        const qx = Math.round(nx * buckets / 2);
-        const qy = Math.round(ny * buckets / 2);
-        const qz = Math.round(nz * buckets / 2);
-        const key = `${qx}|${qy}|${qz}`;
+        // Round RGB to nearest 4 for tolerance at grazing angles
+        // This groups very similar normals together to avoid sub-pixel noise
+        const tolerance = 4;
+        const qr = Math.round(r / tolerance) * tolerance;
+        const qg = Math.round(g / tolerance) * tolerance;
+        const qb = Math.round(b / tolerance) * tolerance;
+        const key = `${qr}|${qg}|${qb}`;
 
         if (!normalToId[key]) {
             normalToId[key] = nextId;

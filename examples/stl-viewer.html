@@ -558,7 +558,7 @@
 
             console.time('GPU Normal Regions');
             const regions = extractNormalRegions(renderer, scene, camera, {
-                resolution: 1.0,
+                // resolution defaults to 4x
                 normalBuckets: 12,
                 simplifyTolerance: 2.0,
                 minArea: 100

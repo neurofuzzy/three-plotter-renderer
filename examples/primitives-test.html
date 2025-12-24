@@ -47,6 +47,8 @@
             <button id="renderBtn">Render Hidden Lines</button>
             <button id="wasmBtn">WASM Full Pipeline</button>
             <button id="exportBtn">Export SVG</button>
+            <button id="gpuRegionsBtn" style="background: #5a2d5a; color: white;">GPU Regions</button>
+            <button id="debugRegionsBtn" style="background: #5a5a2d; color: white;">Debug Regions</button>
         </div>
         <div id="stats">Simple primitives: Pyramid, Cylinder, Icosahedron</div>
     </div>
@@ -56,6 +58,7 @@
         import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
         import { computeHiddenLines, computeHiddenLinesMultiple } from '../src/hidden-line.js';
         import { createHiddenLineProcessor } from '../src/wasm-geometry.js';
+        import { extractNormalRegions, debugNormalRegions } from '../src/gpu-silhouette.js';
 
         let scene, camera, renderer, controls;
         let pyramid, cylinder, sphere;
@@ -129,6 +132,8 @@
             document.getElementById('renderBtn').addEventListener('click', computeAndDraw);
             document.getElementById('wasmBtn').addEventListener('click', computeWASM);
             document.getElementById('exportBtn').addEventListener('click', exportSVG);
+            document.getElementById('gpuRegionsBtn').addEventListener('click', testGpuRegions);
+            document.getElementById('debugRegionsBtn').addEventListener('click', () => debugNormalRegions(renderer, scene, camera));
 
             animate();
         }
@@ -375,6 +380,56 @@
             a.download = 'primitives-hidden-lines.svg';
             a.click();
             URL.revokeObjectURL(url);
+        }
+
+        function testGpuRegions() {
+            document.getElementById('stats').textContent = 'Extracting GPU normal regions...';
+
+            console.time('GPU Normal Regions');
+            const regions = extractNormalRegions(renderer, scene, camera, {
+                normalBuckets: 12,
+                simplifyTolerance: 2.0,
+                minArea: 100
+            });
+            console.timeEnd('GPU Normal Regions');
+
+            console.log(`Extracted ${regions.length} normal regions`);
+
+            // Visualize regions on SVG
+            const svg = document.getElementById('svg-overlay');
+            svg.innerHTML = '';
+            svg.setAttribute('width', window.innerWidth);
+            svg.setAttribute('height', window.innerHeight);
+
+            const w2 = window.innerWidth / 2;
+            const h2 = window.innerHeight / 2;
+
+            regions.forEach((region, idx) => {
+                if (region.boundary.length < 3) return;
+
+                const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+
+                let d = '';
+                region.boundary.forEach((pt, i) => {
+                    const x = pt.x + w2;
+                    const y = -pt.y + h2;
+                    d += (i === 0 ? 'M' : 'L') + x.toFixed(1) + ',' + y.toFixed(1);
+                });
+                d += 'Z';
+
+                const n = region.normal;
+                const r = Math.floor((n.x * 0.5 + 0.5) * 255);
+                const g = Math.floor((n.y * 0.5 + 0.5) * 255);
+                const b = Math.floor((n.z * 0.5 + 0.5) * 255);
+
+                path.setAttribute('d', d);
+                path.setAttribute('fill', `rgba(${r},${g},${b},0.3)`);
+                path.setAttribute('stroke', `rgb(${r},${g},${b})`);
+                path.setAttribute('stroke-width', '1.5');
+                svg.appendChild(path);
+            });
+
+            document.getElementById('stats').textContent = `GPU Normal Regions: ${regions.length} regions`;
         }
 
         function animate() {
