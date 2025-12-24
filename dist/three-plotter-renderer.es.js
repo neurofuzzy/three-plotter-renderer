@@ -14526,7 +14526,7 @@ async function nQ() {
   if (Me) return !0;
   if (tC) return !1;
   try {
-    const a = await import("./geometry_wasm-BWk5SPUp.js");
+    const a = await import("./geometry_wasm-DsMliKXj.js");
     return await a.default(), $2 = a, Me = !0, console.log("[geometry-wasm] WASM module loaded successfully"), !0;
   } catch (a) {
     return tC = a, console.warn("[geometry-wasm] Failed to load WASM, falling back to JS:", a), !1;

@@ -21,6 +21,11 @@ type Point = [f64; 2];
 type Contour = Vec<Point>;
 type Shape = Vec<Contour>;
 
+/// Internal scale factor for 2D coordinate precision
+/// Scale up coordinates during processing, scale down on output
+/// Higher values = better precision but more memory
+const INTERNAL_SCALE: f32 = 16.0;
+
 /// A processor for boolean operations on polygons.
 /// Accumulates shapes and computes boolean results.
 #[wasm_bindgen]
@@ -1080,11 +1085,167 @@ impl HiddenLineProcessor {
         // Step 7: Find intersections and split edges
         let split_edges = self.split_at_intersections(&all_edges, &hash);
         
+        // Step 7.5: Filter out coplanar straggler edges
+        let filtered_edges = self.filter_coplanar_stragglers(&split_edges, &projected);
+        
         // Step 8: Test occlusion for each edge
-        let visible = self.test_occlusion(&split_edges, &projected);
+        let visible = self.test_occlusion(&filtered_edges, &projected);
         
         // Step 9: Output visible edges
         visible
+    }
+    
+    /// Filter out edges that lie between coplanar faces (straggler edges)
+    fn filter_coplanar_stragglers(&self, edges: &[ClassifiedEdge], projected: &[[f32; 3]]) -> Vec<ClassifiedEdge> {
+        let num_tris = self.indices.len() / 3;
+        let mut result = Vec::new();
+        let coplanar_threshold = 0.99_f32;
+        let distance_threshold = 0.5_f32;
+        
+        for edge in edges {
+            // Find all faces that this edge lies along (geometrically)
+            // CRITICAL: Only consider FRONT-FACING faces (matches JS projectedFaces filter)
+            let mut adjacent_faces: Vec<u32> = Vec::new();
+            
+            for tri in 0..num_tris {
+                // First check if face is front-facing (like JS line 1994)
+                let face_normal = self.face_normal(tri as u32);
+                
+                // Get face center for view direction
+                let i0 = self.indices[tri * 3] as usize;
+                let i1 = self.indices[tri * 3 + 1] as usize;
+                let i2 = self.indices[tri * 3 + 2] as usize;
+                
+                let center_x = (self.vertices[i0 * 3] + self.vertices[i1 * 3] + self.vertices[i2 * 3]) / 3.0;
+                let center_y = (self.vertices[i0 * 3 + 1] + self.vertices[i1 * 3 + 1] + self.vertices[i2 * 3 + 1]) / 3.0;
+                let center_z = (self.vertices[i0 * 3 + 2] + self.vertices[i1 * 3 + 2] + self.vertices[i2 * 3 + 2]) / 3.0;
+                
+                // View direction from face center to camera
+                let view_x = self.camera_pos[0] - center_x;
+                let view_y = self.camera_pos[1] - center_y;
+                let view_z = self.camera_pos[2] - center_z;
+                
+                // Check if front-facing (normal.dot(viewDir) > 0)
+                let dot_view = face_normal.0 * view_x + face_normal.1 * view_y + face_normal.2 * view_z;
+                if dot_view <= 0.0 {
+                    continue; // Skip back-facing faces (matches JS)
+                }
+                
+                let p0 = &projected[i0];
+                let p1 = &projected[i1];
+                let p2 = &projected[i2];
+                
+                // Check if edge lies along any triangle edge
+                if Self::edge_lies_along_triangle_edge(
+                    edge.x1, edge.y1, edge.x2, edge.y2,
+                    p0[0], p0[1], p1[0], p1[1], p2[0], p2[1]
+                ) {
+                    adjacent_faces.push(tri as u32);
+                }
+            }
+            
+            // Check if all adjacent faces are coplanar
+            let mut should_remove = false;
+            if adjacent_faces.len() >= 2 {
+                let n0 = self.face_normal(adjacent_faces[0]);
+                let c0 = self.face_plane_constant(adjacent_faces[0]);
+                let mut all_coplanar = true;
+                
+                for i in 1..adjacent_faces.len() {
+                    let ni = self.face_normal(adjacent_faces[i]);
+                    let ci = self.face_plane_constant(adjacent_faces[i]);
+                    
+                    // Check normal similarity
+                    let dot = n0.0 * ni.0 + n0.1 * ni.1 + n0.2 * ni.2;
+                    let similarity = dot.abs();
+                    
+                    // Check plane distance
+                    let dist_diff = if dot > 0.0 { 
+                        (c0 - ci).abs() 
+                    } else { 
+                        (c0 + ci).abs() 
+                    };
+                    
+                    if similarity < coplanar_threshold || dist_diff >= distance_threshold {
+                        all_coplanar = false;
+                        break;
+                    }
+                }
+                
+                if all_coplanar {
+                    should_remove = true;
+                }
+            }
+            
+            if !should_remove {
+                result.push(edge.clone());
+            }
+        }
+        
+        result
+    }
+    
+    /// Check if an edge lies along one of the triangle's edges
+    fn edge_lies_along_triangle_edge(
+        ex1: f32, ey1: f32, ex2: f32, ey2: f32,
+        ax: f32, ay: f32, bx: f32, by: f32, cx: f32, cy: f32
+    ) -> bool {
+        // Check if edge lies along AB, BC, or CA
+        Self::edges_collinear(ex1, ey1, ex2, ey2, ax, ay, bx, by) ||
+        Self::edges_collinear(ex1, ey1, ex2, ey2, bx, by, cx, cy) ||
+        Self::edges_collinear(ex1, ey1, ex2, ey2, cx, cy, ax, ay)
+    }
+    
+    /// Check if two edges are collinear and overlapping (matches JS edgeLiesAlongFaceEdge)
+    fn edges_collinear(
+        ax1: f32, ay1: f32, ax2: f32, ay2: f32,
+        bx1: f32, by1: f32, bx2: f32, by2: f32
+    ) -> bool {
+        // Match JS tolerance of 2.0 pixels, scaled by internal scale factor
+        let tolerance = 2.0_f32 * INTERNAL_SCALE;
+        
+        // Direction of segment B (the face edge)
+        let dx = bx2 - bx1;
+        let dy = by2 - by1;
+        let len_sq = dx * dx + dy * dy;
+        if len_sq < 1e-10 { return false; } // Degenerate face edge
+        
+        // Project and check function (matches JS projectAndCheck)
+        let project_and_check = |px: f32, py: f32| -> bool {
+            // Project p onto line defined by b1->b2
+            let t = ((px - bx1) * dx + (py - by1) * dy) / len_sq;
+            
+            // Projected point
+            let proj_x = bx1 + t * dx;
+            let proj_y = by1 + t * dy;
+            
+            // Distance from p to projected point
+            let dist_sq = (px - proj_x) * (px - proj_x) + (py - proj_y) * (py - proj_y);
+            
+            // Check if close to line and within segment (with small margin) - matches JS
+            dist_sq < tolerance * tolerance && t >= -0.01 && t <= 1.01
+        };
+        
+        // Both edge endpoints must lie along the face edge
+        project_and_check(ax1, ay1) && project_and_check(ax2, ay2)
+    }
+    
+    /// Compute plane constant for a face (d in ax + by + cz + d = 0)
+    /// Matches JS: d = -normal.dot(v0)
+    fn face_plane_constant(&self, face_idx: u32) -> f32 {
+        let base = (face_idx as usize) * 3;
+        if base + 2 >= self.indices.len() {
+            return 0.0;
+        }
+        
+        let i0 = self.indices[base] as usize;
+        let v0x = self.vertices[i0 * 3];
+        let v0y = self.vertices[i0 * 3 + 1];
+        let v0z = self.vertices[i0 * 3 + 2];
+        
+        let n = self.face_normal(face_idx);
+        // Match JS: d = -normal.dot(v0)
+        -(n.0 * v0x + n.1 * v0y + n.2 * v0z)
     }
     
     /// Generate hatch lines by slicing triangles with parallel planes
@@ -1216,6 +1377,8 @@ impl HiddenLineProcessor {
     
     /// Project all 3D vertices to 2D screen coordinates
     fn project_vertices(&self) -> Vec<[f32; 3]> {
+
+        
         let mut result = Vec::with_capacity(self.vertices.len() / 3);
         let half_w = self.width / 2.0;
         let half_h = self.height / 2.0;
@@ -1241,9 +1404,9 @@ impl HiddenLineProcessor {
             let dz = z - self.camera_pos[2];
             let depth = (dx * dx + dy * dy + dz * dz).sqrt();
             
-            // Screen coordinates
-            let screen_x = ndc_x * half_w;
-            let screen_y = -ndc_y * half_h; // Flip Y for screen space
+            // Screen coordinates with internal scale for precision
+            let screen_x = ndc_x * half_w * INTERNAL_SCALE;
+            let screen_y = -ndc_y * half_h * INTERNAL_SCALE; // Flip Y for screen space
             
             result.push([screen_x, screen_y, depth]);
         }
@@ -1547,10 +1710,11 @@ impl HiddenLineProcessor {
             }
             
             if !occluded {
-                visible.push(edge.x1);
-                visible.push(edge.y1);
-                visible.push(edge.x2);
-                visible.push(edge.y2);
+
+                visible.push(edge.x1 / INTERNAL_SCALE);
+                visible.push(edge.y1 / INTERNAL_SCALE);
+                visible.push(edge.x2 / INTERNAL_SCALE);
+                visible.push(edge.y2 / INTERNAL_SCALE);
                 visible.push(match edge.edge_type {
                     EdgeType::Silhouette => EDGE_SILHOUETTE,
                     EdgeType::Crease => EDGE_CREASE,
