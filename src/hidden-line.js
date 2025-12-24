@@ -60,8 +60,6 @@ import {
  * @property {boolean} [isTJunctionStraggler] - Is this edge a result of a T-junction split?
  */
 
-
-
 /**
  * @typedef {Object} ProjectedFace
  * @property {Vector2} a2d - Screen space vertex A
@@ -289,6 +287,11 @@ export function projectEdges(edges, camera, width, height, scale = 1) {
     const halfWidth = width / 2;
     const halfHeight = height / 2;
 
+    /**
+     * 
+     * @param {Vector3} p3d 
+     * @returns 
+     */
     const projectPoint = (p3d) => {
         const projected = p3d.clone().project(camera);
         return new Vector2(
@@ -372,7 +375,7 @@ export class SpatialHash {
             if (!this.cells.has(key)) {
                 this.cells.set(key, []);
             }
-            this.cells.get(key).push(edge);
+            this.cells.get(key)?.push(edge);
         }
     }
 
@@ -445,6 +448,12 @@ export function splitAtIntersections(edges) {
 
     // Helper: check if point p lies on edge interior (not endpoints)
     // Returns t parameter (0,1) if on edge, null otherwise
+    /**
+     * 
+     * @param {Vector2} p 
+     * @param {Edge2D} edge 
+     * @returns 
+     */
     const pointOnEdgeInterior = (p, edge) => {
         const dx = edge.b.x - edge.a.x;
         const dy = edge.b.y - edge.a.y;
@@ -482,8 +491,8 @@ export function splitAtIntersections(edges) {
                 if (!splits.has(edges[i])) splits.set(edges[i], []);
                 if (!splits.has(edges[j])) splits.set(edges[j], []);
 
-                splits.get(edges[i]).push({ t: intersection.t1, point: intersection.point });
-                splits.get(edges[j]).push({ t: intersection.t2, point: intersection.point });
+                splits.get(edges[i])?.push({ t: intersection.t1, point: intersection.point });
+                splits.get(edges[j])?.push({ t: intersection.t2, point: intersection.point });
             } else {
                 // Check for T-junctions: endpoint of one edge on interior of other
                 // Mark BOTH edges as potential stragglers
@@ -492,7 +501,7 @@ export function splitAtIntersections(edges) {
                 const tAonJ = pointOnEdgeInterior(edges[i].a, edges[j]);
                 if (tAonJ !== null) {
                     if (!splits.has(edges[j])) splits.set(edges[j], []);
-                    splits.get(edges[j]).push({ t: tAonJ, point: edges[i].a.clone() });
+                    splits.get(edges[j])?.push({ t: tAonJ, point: edges[i].a.clone() });
                     potentialStragglers.add(edges[i]);
                     potentialStragglers.add(edges[j]);  // Mark BOTH
                 }
@@ -500,7 +509,7 @@ export function splitAtIntersections(edges) {
                 const tBonJ = pointOnEdgeInterior(edges[i].b, edges[j]);
                 if (tBonJ !== null) {
                     if (!splits.has(edges[j])) splits.set(edges[j], []);
-                    splits.get(edges[j]).push({ t: tBonJ, point: edges[i].b.clone() });
+                    splits.get(edges[j])?.push({ t: tBonJ, point: edges[i].b.clone() });
                     potentialStragglers.add(edges[i]);
                     potentialStragglers.add(edges[j]);  // Mark BOTH
                 }
@@ -509,7 +518,7 @@ export function splitAtIntersections(edges) {
                 const tAonI = pointOnEdgeInterior(edges[j].a, edges[i]);
                 if (tAonI !== null) {
                     if (!splits.has(edges[i])) splits.set(edges[i], []);
-                    splits.get(edges[i]).push({ t: tAonI, point: edges[j].a.clone() });
+                    splits.get(edges[i])?.push({ t: tAonI, point: edges[j].a.clone() });
                     potentialStragglers.add(edges[i]);  // Mark BOTH
                     potentialStragglers.add(edges[j]);
                 }
@@ -517,7 +526,7 @@ export function splitAtIntersections(edges) {
                 const tBonI = pointOnEdgeInterior(edges[j].b, edges[i]);
                 if (tBonI !== null) {
                     if (!splits.has(edges[i])) splits.set(edges[i], []);
-                    splits.get(edges[i]).push({ t: tBonI, point: edges[j].b.clone() });
+                    splits.get(edges[i])?.push({ t: tBonI, point: edges[j].b.clone() });
                     potentialStragglers.add(edges[i]);  // Mark BOTH
                     potentialStragglers.add(edges[j]);
                 }
@@ -674,6 +683,14 @@ export function testOcclusionDepthBuffer(edges, scene, camera, epsilon, width, h
         1.0 / PackFactors[3]               // 0.0000000059...
     ];
 
+    /**
+     * 
+     * @param {number} r 
+     * @param {number} g 
+     * @param {number} b 
+     * @param {number} a 
+     * @returns 
+     */
     const unpackDepth = (r, g, b, a) => {
         // Normalize from 0-255 to 0-1
         const rn = r / 255.0;
@@ -949,6 +966,13 @@ export function testOcclusionFaceID(edges, meshes, camera, width, height, render
  * @returns {boolean}
  */
 function pointInTriangle2D(p, a, b, c) {
+    /**
+     * 
+     * @param {Vector2} p1 
+     * @param {Vector2} p2 
+     * @param {Vector2} p3 
+     * @returns 
+     */
     const sign = (p1, p2, p3) =>
         (p1.x - p3.x) * (p2.y - p3.y) - (p2.x - p3.x) * (p1.y - p3.y);
 
@@ -1003,7 +1027,7 @@ function edgeLiesAlongFaceEdge(edgeA, edgeB, faceEdgeA, faceEdgeB, tolerance = 2
  * Find all faces adjacent to an edge geometrically
  * @param {Edge2D} edge - Edge with a, b (2D points)
  * @param {ProjectedFace[]} projectedFaces - Array of projected faces
- * @returns {Object[]} - Array of matching faces with match type
+ * @returns {{ face: ProjectedFace, matchedEdge: string, matchType: string}[]} - Array of matching faces with match type
  */
 export function findAdjacentFaces(edge, projectedFaces) {
     const results = [];
@@ -1352,13 +1376,15 @@ export function optimizeEdges(edges, tolerance = 0.5) {
  */
 export function cleanupOrphanedEdges(edges, tolerance = 1.0, maxExtension = 50) {
     // Build vertex -> edge connectivity map
-    const vertexKey = (p) => `${Math.round(p.x / tolerance)},${Math.round(p.y / tolerance)}`;
+
+    const vertexKey = (/** @type {Vector2} */ p) => `${Math.round(p.x / tolerance)},${Math.round(p.y / tolerance)}`;
 
     // Map of vertex hash -> { edges: [{edge, endpoint: 'a'|'b'}], point: Vector2 }
     const vertices = new Map();
 
     for (const edge of edges) {
         for (const endpoint of ['a', 'b']) {
+            /** @type {Edge2D} */
             const p = edge[endpoint];
             const key = vertexKey(p);
             if (!vertices.has(key)) {
@@ -1400,6 +1426,14 @@ export function cleanupOrphanedEdges(edges, tolerance = 1.0, maxExtension = 50) 
 
     // Line-line intersection helper
     // Returns t values for intersection point on both lines, or null if parallel
+    /**
+     * 
+     * @param {number} p1 
+     * @param {number} d1 
+     * @param {number} p2 
+     * @param {number} d2 
+     * @returns 
+     */
     const lineIntersection = (p1, d1, p2, d2) => {
         const cross = d1.x * d2.y - d1.y * d2.x;
         if (Math.abs(cross) < 0.0001) return null; // Parallel
@@ -1421,6 +1455,7 @@ export function cleanupOrphanedEdges(edges, tolerance = 1.0, maxExtension = 50) 
         if (processed.has(orphan.key)) continue;
 
         let bestMatch = null;
+        /** @type {Partial<Vector2> | null} */
         let bestIntersection = null;
         let bestDist = Infinity;
 
@@ -1622,7 +1657,8 @@ export function cleanupOrphanedEdges(edges, tolerance = 1.0, maxExtension = 50) 
  * @returns {Edge2D[]} Filtered edges
  */
 export function removeIsolatedEdges(edges, tolerance = 1.0) {
-    const vertexKey = (p) => `${Math.round(p.x / tolerance)},${Math.round(p.y / tolerance)}`;
+
+    const vertexKey = (/** @type {Vector2} */ p) => `${Math.round(p.x / tolerance)},${Math.round(p.y / tolerance)}`;
 
     // Count connections per vertex
     const vertexConnections = new Map();
