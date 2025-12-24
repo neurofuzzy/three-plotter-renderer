@@ -236,13 +236,14 @@ function sampleRegionDepth(labels, depthPixels, width, height, targetLabel) {
 
 /**
  * Morphological erosion on region map
- * Each iteration shrinks regions by 1 pixel at the boundary
+ * Only erodes pixels at the OUTER boundary (next to background 0)
+ * Does NOT erode at boundaries between different regions (holes)
  */
 function erodeRegionMap(regionMap, width, height, iterations) {
     let current = regionMap;
 
     for (let iter = 0; iter < iterations; iter++) {
-        const next = new Uint16Array(width * height);
+        const next = new Uint16Array(current);  // Start with copy
 
         for (let y = 1; y < height - 1; y++) {
             for (let x = 1; x < width - 1; x++) {
@@ -251,18 +252,18 @@ function erodeRegionMap(regionMap, width, height, iterations) {
 
                 if (region === 0) continue;
 
-                // Check 4-connected neighbors (faster than 8-connected)
-                // Only keep pixel if all neighbors have same region
+                // Check 4-connected neighbors
+                // Only erode if ANY neighbor is background (0)
+                // Don't erode if neighbors are just different regions
                 const left = current[i - 1];
                 const right = current[i + 1];
                 const up = current[i - width];
                 const down = current[i + width];
 
-                if (left === region && right === region &&
-                    up === region && down === region) {
-                    next[i] = region;
+                if (left === 0 || right === 0 || up === 0 || down === 0) {
+                    next[i] = 0;  // Erode this pixel (it touches background)
                 }
-                // else: this pixel is at boundary and gets eroded (stays 0)
+                // else: keep the pixel even if it touches other regions
             }
         }
 
