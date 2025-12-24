@@ -153,7 +153,7 @@
         import { Slicer } from '../src/slicer.js';
         import { setWasmEnabled, getWasmEnabled, isWasmReady, createHiddenLineProcessor } from '../src/wasm-geometry.js';
         import { extractNormalRegions, debugNormalRegions } from '../src/gpu-silhouette.js';
-        import { generatePerspectiveHatches } from '../src/perspective-hatch.js';
+        import { generatePerspectiveHatches, clipLineOutsidePolygon } from '../src/perspective-hatch.js';
 
         let scene, camera, renderer, controls, mesh;
 
@@ -634,11 +634,15 @@
             const w2 = window.innerWidth / 2;
             const h2 = window.innerHeight / 2;
 
-            let totalHatches = 0;
+            // Sort regions by depth (front first - lower depth = closer)
+            regions.sort((a, b) => a.depth - b.depth);
 
-            // Draw hatches for each region
+            let totalHatches = 0;
+            const allRegionBounds = regions.map(r => r.boundary);
+
+            // Draw hatches for each region, clipping against front regions
             regions.forEach((region, idx) => {
-                const hatches = generatePerspectiveHatches(region, camera, {
+                let hatches = generatePerspectiveHatches(region, camera, {
                     baseSpacing: 8,
                     minSpacing: 3,
                     maxSpacing: 20,
@@ -646,6 +650,15 @@
                     screenWidth: window.innerWidth,
                     screenHeight: window.innerHeight
                 });
+
+                // Clip hatches against all regions in front (already processed)
+                // Skip self (idx) and include all previous regions (0 to idx-1)
+                for (let frontIdx = 0; frontIdx < idx; frontIdx++) {
+                    const frontBoundary = allRegionBounds[frontIdx];
+                    hatches = hatches.flatMap(hatch =>
+                        clipLineOutsidePolygon(hatch, frontBoundary)
+                    );
+                }
 
                 totalHatches += hatches.length;
 

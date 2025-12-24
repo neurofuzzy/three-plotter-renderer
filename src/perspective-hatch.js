@@ -231,6 +231,91 @@ export function clipLineToPolygon(line, polygon) {
     return result;
 }
 
+/**
+ * Clip a line to OUTSIDE a polygon (inverse of clipLineToPolygon)
+ * Returns segments that are OUTSIDE the polygon
+ */
+export function clipLineOutsidePolygon(line, polygon) {
+    const intersections = [];
+    const n = polygon.length;
+
+    // Add start and end points
+    const startInside = pointInPolygon(line.start.x, line.start.y, polygon);
+    const endInside = pointInPolygon(line.end.x, line.end.y, polygon);
+
+    intersections.push({ point: line.start.clone(), t: 0, inside: startInside });
+
+    // Find all intersections with polygon edges
+    for (let i = 0; i < n; i++) {
+        const p1 = polygon[i];
+        const p2 = polygon[(i + 1) % n];
+
+        const intersection = lineIntersectionFull(
+            line.start.x, line.start.y, line.end.x, line.end.y,
+            p1.x, p1.y, p2.x, p2.y
+        );
+
+        if (intersection && intersection.t > 0 && intersection.t < 1) {
+            intersections.push({
+                point: new Vector2(intersection.x, intersection.y),
+                t: intersection.t,
+                inside: null // will be determined by neighbors
+            });
+        }
+    }
+
+    intersections.push({ point: line.end.clone(), t: 1, inside: endInside });
+
+    // Sort by parameter
+    intersections.sort((a, b) => a.t - b.t);
+
+    // Remove duplicates (points too close together)
+    const filtered = [intersections[0]];
+    for (let i = 1; i < intersections.length; i++) {
+        if (intersections[i].t - filtered[filtered.length - 1].t > 0.0001) {
+            filtered.push(intersections[i]);
+        }
+    }
+
+    if (filtered.length < 2) return [line]; // No intersections, check if line is outside
+
+    // Build segments that are OUTSIDE
+    const result = [];
+    for (let i = 0; i < filtered.length - 1; i++) {
+        const midT = (filtered[i].t + filtered[i + 1].t) / 2;
+        const midX = line.start.x + midT * (line.end.x - line.start.x);
+        const midY = line.start.y + midT * (line.end.y - line.start.y);
+
+        // If midpoint is OUTSIDE polygon, include this segment
+        if (!pointInPolygon(midX, midY, polygon)) {
+            result.push({
+                start: filtered[i].point.clone(),
+                end: filtered[i + 1].point.clone()
+            });
+        }
+    }
+
+    return result;
+}
+
+// Full line intersection (both segments)
+function lineIntersectionFull(x1, y1, x2, y2, x3, y3, x4, y4) {
+    const denom = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4);
+    if (Math.abs(denom) < 1e-10) return null;
+
+    const t = ((x1 - x3) * (y3 - y4) - (y1 - y3) * (x3 - x4)) / denom;
+    const u = -((x1 - x2) * (y1 - y3) - (y1 - y2) * (x1 - x3)) / denom;
+
+    if (t >= 0 && t <= 1 && u >= 0 && u <= 1) {
+        return {
+            x: x1 + t * (x2 - x1),
+            y: y1 + t * (y2 - y1),
+            t
+        };
+    }
+    return null;
+}
+
 function lineIntersection(x1, y1, x2, y2, x3, y3, x4, y4) {
     const denom = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4);
     if (Math.abs(denom) < 1e-10) return null;
