@@ -623,7 +623,8 @@
             const regions = extractNormalRegions(renderer, scene, camera, {
                 normalBuckets: 12,
                 simplifyTolerance: 2.0,
-                minArea: 100
+                minArea: 100,
+                insetPixels: 3  // Inset boundaries by 3 pixels
             });
 
             const svg = document.getElementById('svg-overlay');
@@ -672,21 +673,6 @@
                     line.setAttribute('stroke-width', '0.75');
                     svg.appendChild(line);
                 });
-
-                // Also draw region boundary
-                if (region.boundary.length >= 3) {
-                    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-                    let d = '';
-                    region.boundary.forEach((pt, i) => {
-                        d += (i === 0 ? 'M' : 'L') + (pt.x + w2).toFixed(1) + ',' + (-pt.y + h2).toFixed(1);
-                    });
-                    d += 'Z';
-                    path.setAttribute('d', d);
-                    path.setAttribute('fill', 'none');
-                    path.setAttribute('stroke', 'rgba(0,0,0,0.3)');
-                    path.setAttribute('stroke-width', '1.5');
-                    svg.appendChild(path);
-                }
             });
 
             console.timeEnd('GPU Hatches');

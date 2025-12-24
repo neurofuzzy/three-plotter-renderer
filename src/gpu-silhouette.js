@@ -41,22 +41,31 @@ export function extractNormalRegions(renderer, scene, camera, options = {}) {
         resolution = 2.0,        // Render at 2x for smooth boundaries
         normalBuckets = 12,      // Quantize normals into N directions
         minArea = 100,           // Minimum region area in pixels (at output scale)
-        simplifyTolerance = 2.0
+        simplifyTolerance = 2.0,
+        insetPixels = 0          // Inset boundaries by this many pixels (GPU erosion)
     } = options;
 
     const size = renderer.getSize(new Vector2());
     const width = Math.floor(size.x * resolution);
     const height = Math.floor(size.y * resolution);
 
-    console.log(`GPU Normal Regions: ${width}x${height}, ${normalBuckets} buckets`);
+    // Scale inset by resolution
+    const insetAmount = Math.round(insetPixels * resolution);
+
+    console.log(`GPU Normal Regions: ${width}x${height}, inset=${insetAmount}px`);
 
     // Step 1: Render normals and depth to textures
     const normalPixels = renderNormals(renderer, scene, camera, width, height);
     const depthPixels = renderDepth(renderer, scene, camera, width, height);
 
     // Step 2: Quantize normals to region IDs
-    const { regionMap, normalLookup } = quantizeNormals(normalPixels, width, height, normalBuckets);
+    let { regionMap, normalLookup } = quantizeNormals(normalPixels, width, height, normalBuckets);
     console.log(`GPU Normal Regions: ${Object.keys(normalLookup).length} unique normal directions`);
+
+    // Step 2.5: Apply erosion for insetting (GPU-style morphological erosion)
+    if (insetAmount > 0) {
+        regionMap = erodeRegionMap(regionMap, width, height, insetAmount);
+    }
 
     // Step 3: Connected component labeling
     const { labels, regionCount } = connectedComponents(regionMap, width, height);
@@ -223,6 +232,44 @@ function sampleRegionDepth(labels, depthPixels, width, height, targetLabel) {
     }
 
     return count > 0 ? sum / count : 0.5;
+}
+
+/**
+ * Morphological erosion on region map
+ * Each iteration shrinks regions by 1 pixel at the boundary
+ */
+function erodeRegionMap(regionMap, width, height, iterations) {
+    let current = regionMap;
+
+    for (let iter = 0; iter < iterations; iter++) {
+        const next = new Uint16Array(width * height);
+
+        for (let y = 1; y < height - 1; y++) {
+            for (let x = 1; x < width - 1; x++) {
+                const i = y * width + x;
+                const region = current[i];
+
+                if (region === 0) continue;
+
+                // Check 4-connected neighbors (faster than 8-connected)
+                // Only keep pixel if all neighbors have same region
+                const left = current[i - 1];
+                const right = current[i + 1];
+                const up = current[i - width];
+                const down = current[i + width];
+
+                if (left === region && right === region &&
+                    up === region && down === region) {
+                    next[i] = region;
+                }
+                // else: this pixel is at boundary and gets eroded (stays 0)
+            }
+        }
+
+        current = next;
+    }
+
+    return current;
 }
 
 /**
