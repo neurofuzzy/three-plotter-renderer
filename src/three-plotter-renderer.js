@@ -7,3 +7,4 @@ export { PolygonShape } from './geom/shapes.js';
 export { Optimize } from './optimize.js';
 export { Hatcher } from './hatcher.js';
 export { Expander } from './expander.js';
+export { extractSilhouettePolygons } from './gpu-silhouette.js';

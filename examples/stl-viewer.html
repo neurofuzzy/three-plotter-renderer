@@ -133,6 +133,8 @@
             <button id="renderBtn">Render Hidden Lines</button>
             <button id="wasmBtn" style="background: #2d5a27;">WASM Full Pipeline</button>
             <button id="exportBtn">Export SVG</button>
+            <button id="gpuSilBtn" style="background: #5a2d5a;">GPU Silhouettes</button>
+            <button id="debugDepthBtn" style="background: #5a5a2d;">Debug Depth</button>
             <label
                 style="display: flex; align-items: center; gap: 6px; margin-left: 10px; border-left: 1px solid var(--border); padding-left: 10px; cursor: pointer;">
                 <input type="checkbox" id="wasmToggle" checked style="width: 16px; height: 16px; cursor: pointer;">
@@ -149,6 +151,7 @@
         import { computeHiddenLinesMultiple, findAdjacentFaces } from '../src/hidden-line.js';
         import { Slicer } from '../src/slicer.js';
         import { setWasmEnabled, getWasmEnabled, isWasmReady, createHiddenLineProcessor } from '../src/wasm-geometry.js';
+        import { extractNormalRegions, debugNormalRegions } from '../src/gpu-silhouette.js';
 
         let scene, camera, renderer, controls, mesh;
 
@@ -195,6 +198,12 @@
             });
             // WASM Full Pipeline button
             document.getElementById('wasmBtn').addEventListener('click', computeWASM);
+            // GPU Silhouettes button
+            document.getElementById('gpuSilBtn').addEventListener('click', testGpuRegions);
+            // Debug Regions button
+            document.getElementById('debugDepthBtn').addEventListener('click', () => {
+                if (mesh) debugNormalRegions(renderer, scene, camera);
+            });
             // Load default model
             loadModel(document.getElementById('modelSelect').value);
 
@@ -534,6 +543,68 @@
             a.download = 'hidden-lines.svg';
             a.click();
             URL.revokeObjectURL(url);
+        }
+
+        /**
+         * Test GPU silhouette polygon extraction
+         */
+        function testGpuRegions() {
+            if (!mesh) {
+                document.getElementById('stats').textContent = 'Please load a model first';
+                return;
+            }
+
+            document.getElementById('stats').textContent = 'Extracting GPU normal regions...';
+
+            console.time('GPU Normal Regions');
+            const regions = extractNormalRegions(renderer, scene, camera, {
+                resolution: 1.0,
+                normalBuckets: 12,
+                simplifyTolerance: 2.0,
+                minArea: 100
+            });
+            console.timeEnd('GPU Normal Regions');
+
+            console.log(`Extracted ${regions.length} normal regions`);
+
+            // Visualize regions on SVG
+            const svg = document.getElementById('svg-overlay');
+            svg.innerHTML = '';
+            svg.setAttribute('width', window.innerWidth);
+            svg.setAttribute('height', window.innerHeight);
+
+            const w2 = window.innerWidth / 2;
+            const h2 = window.innerHeight / 2;
+
+            // Draw each region with color based on normal direction
+            regions.forEach((region, idx) => {
+                if (region.boundary.length < 3) return;
+
+                const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+
+                let d = '';
+                region.boundary.forEach((pt, i) => {
+                    const x = pt.x + w2;
+                    const y = -pt.y + h2;
+                    d += (i === 0 ? 'M' : 'L') + x.toFixed(1) + ',' + y.toFixed(1);
+                });
+                d += 'Z';
+
+                // Color based on normal direction
+                const n = region.normal;
+                const r = Math.floor((n.x * 0.5 + 0.5) * 255);
+                const g = Math.floor((n.y * 0.5 + 0.5) * 255);
+                const b = Math.floor((n.z * 0.5 + 0.5) * 255);
+
+                path.setAttribute('d', d);
+                path.setAttribute('fill', `rgba(${r},${g},${b},0.3)`);
+                path.setAttribute('stroke', `rgb(${r},${g},${b})`);
+                path.setAttribute('stroke-width', '1.5');
+                svg.appendChild(path);
+            });
+
+            document.getElementById('stats').textContent =
+                `GPU Normal Regions: ${regions.length} regions`;
         }
 
         function animate() {
