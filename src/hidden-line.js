@@ -8,11 +8,6 @@
  */
 
 import { Optimize } from './optimize.js';
-import {
-    isWasmReady,
-    splitEdgesAtIntersections as wasmSplitEdges,
-    testOcclusionMath as wasmTestOcclusion
-} from './wasm-geometry.js';
 
 import {
     Vector3,
@@ -1132,15 +1127,6 @@ export function filterSmoothSplitEdges(edges, projectedFaces, coplanarThreshold 
  */
 export function testOcclusionMath(edges, projectedFaces, camera) {
     const cameraPos = camera.position;
-
-    // Try WASM-accelerated path
-    if (isWasmReady() && edges.length > 0 && projectedFaces.length > 0) {
-        try {
-            return testOcclusionMathWASM(edges, projectedFaces, cameraPos);
-        } catch (e) {
-            console.warn('[hidden-line] WASM occlusion failed, falling back to JS:', e);
-        }
-    }
 
     // JS fallback
     return testOcclusionMathJS(edges, projectedFaces, cameraPos);

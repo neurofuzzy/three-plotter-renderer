@@ -52,7 +52,7 @@ export function extractNormalRegions(renderer, scene, camera, options = {}) {
     // Scale inset by resolution
     const insetAmount = Math.round(insetPixels * resolution);
 
-    console.log(`GPU Normal Regions: ${width}x${height}, inset=${insetAmount}px`);
+
 
     // Step 1: Render normals and depth to textures
     const normalPixels = renderNormals(renderer, scene, camera, width, height);
@@ -60,7 +60,7 @@ export function extractNormalRegions(renderer, scene, camera, options = {}) {
 
     // Step 2: Quantize normals to region IDs
     let { regionMap, normalLookup } = quantizeNormals(normalPixels, width, height, normalBuckets);
-    console.log(`GPU Normal Regions: ${Object.keys(normalLookup).length} unique normal directions`);
+
 
     // Step 2.5: Apply erosion for insetting (GPU-style morphological erosion)
     if (insetAmount > 0) {
@@ -69,7 +69,7 @@ export function extractNormalRegions(renderer, scene, camera, options = {}) {
 
     // Step 3: Connected component labeling
     const { labels, regionCount } = connectedComponents(regionMap, width, height);
-    console.log(`GPU Normal Regions: ${regionCount} connected regions`);
+
 
     // Step 4: Trace boundaries for each region
     const regions = [];
@@ -102,7 +102,7 @@ export function extractNormalRegions(renderer, scene, camera, options = {}) {
         });
     }
 
-    console.log(`GPU Normal Regions: ${regions.length} regions after filtering (minArea=${minArea})`);
+
     return regions;
 }
 
@@ -547,7 +547,7 @@ export function debugNormalRegions(renderer, scene, camera) {
     const { regionMap, normalLookup } = quantizeNormals(normalPixels, width, height, 12);
     const { labels, regionCount } = connectedComponents(regionMap, width, height);
 
-    console.log(`Debug: ${regionCount} regions, ${Object.keys(normalLookup).length} normal buckets`);
+
 
     // Create visualization
     const canvas = document.createElement('canvas');

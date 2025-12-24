@@ -1,11 +1,5 @@
 import { Segment, Segments, SegmentCollection, Point, GeomUtil } from "./geom/geom.js";
 import { Analyzer } from "./analyzer.js";
-import {
-  isWasmReady,
-  dedupeSegments as wasmDedupe,
-  trimSmallSegments as wasmTrimSmall,
-  mergeColinearSegments as wasmMergeColinear
-} from './wasm-geometry.js';
 
 export class Optimize {
   /**
@@ -49,19 +43,11 @@ export class Optimize {
     const hasEdgeMetadata = segs.length > 0 && (segs[0].isHatch !== undefined || segs[0].mesh !== undefined || segs[0].isSilhouette !== undefined);
 
     // Try WASM-accelerated path (only for plain Segment objects without metadata)
-    if (isWasmReady() && segs.length > 0 && !hasEdgeMetadata) {
-      try {
-        segs = Optimize._segmentsWASM(segs, noSplitColinear, trimSmall, smallDist);
-      } catch (e) {
-        console.warn('[optimize] WASM failed, falling back to JS:', e);
-        segs = Optimize._segmentsJS(segs, noSplitColinear, trimSmall, smallDist);
-      }
-    } else {
-      if (hasEdgeMetadata) {
-        console.log('[optimize] Skipping WASM to preserve edge metadata');
-      }
-      segs = Optimize._segmentsJS(segs, noSplitColinear, trimSmall, smallDist);
+
+    if (hasEdgeMetadata) {
+      console.log('[optimize] Skipping WASM to preserve edge metadata');
     }
+    segs = Optimize._segmentsJS(segs, noSplitColinear, trimSmall, smallDist);
 
     if (optimizePathOrder) {
       segs = Analyzer.pathOrder(segs, splitTeeIntersections, splitCrossIntersections);
