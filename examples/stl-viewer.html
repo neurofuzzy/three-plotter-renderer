@@ -135,6 +135,7 @@
             <button id="exportBtn">Export SVG</button>
             <button id="gpuSilBtn" style="background: #5a2d5a;">GPU Silhouettes</button>
             <button id="debugDepthBtn" style="background: #5a5a2d;">Debug Depth</button>
+            <button id="gpuHatchBtn" style="background: #2d5a5a;">GPU Hatches</button>
             <label
                 style="display: flex; align-items: center; gap: 6px; margin-left: 10px; border-left: 1px solid var(--border); padding-left: 10px; cursor: pointer;">
                 <input type="checkbox" id="wasmToggle" checked style="width: 16px; height: 16px; cursor: pointer;">
@@ -152,6 +153,7 @@
         import { Slicer } from '../src/slicer.js';
         import { setWasmEnabled, getWasmEnabled, isWasmReady, createHiddenLineProcessor } from '../src/wasm-geometry.js';
         import { extractNormalRegions, debugNormalRegions } from '../src/gpu-silhouette.js';
+        import { generatePerspectiveHatches } from '../src/perspective-hatch.js';
 
         let scene, camera, renderer, controls, mesh;
 
@@ -204,6 +206,8 @@
             document.getElementById('debugDepthBtn').addEventListener('click', () => {
                 if (mesh) debugNormalRegions(renderer, scene, camera);
             });
+            // GPU Hatches button
+            document.getElementById('gpuHatchBtn').addEventListener('click', testGpuHatches);
             // Load default model
             loadModel(document.getElementById('modelSelect').value);
 
@@ -605,6 +609,76 @@
 
             document.getElementById('stats').textContent =
                 `GPU Normal Regions: ${regions.length} regions`;
+        }
+
+        function testGpuHatches() {
+            if (!mesh) {
+                document.getElementById('stats').textContent = 'Please load a model first';
+                return;
+            }
+
+            document.getElementById('stats').textContent = 'Generating perspective hatches...';
+
+            console.time('GPU Hatches');
+            const regions = extractNormalRegions(renderer, scene, camera, {
+                normalBuckets: 12,
+                simplifyTolerance: 2.0,
+                minArea: 100
+            });
+
+            const svg = document.getElementById('svg-overlay');
+            svg.innerHTML = '';
+            svg.setAttribute('width', window.innerWidth);
+            svg.setAttribute('height', window.innerHeight);
+
+            const w2 = window.innerWidth / 2;
+            const h2 = window.innerHeight / 2;
+
+            let totalHatches = 0;
+
+            // Draw hatches for each region
+            regions.forEach((region, idx) => {
+                const hatches = generatePerspectiveHatches(region, camera, {
+                    baseSpacing: 8,
+                    minSpacing: 3,
+                    maxSpacing: 20,
+                    depthFactor: 0.5,
+                    screenWidth: window.innerWidth,
+                    screenHeight: window.innerHeight
+                });
+
+                totalHatches += hatches.length;
+
+                hatches.forEach(hatch => {
+                    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                    line.setAttribute('x1', hatch.start.x + w2);
+                    line.setAttribute('y1', -hatch.start.y + h2);
+                    line.setAttribute('x2', hatch.end.x + w2);
+                    line.setAttribute('y2', -hatch.end.y + h2);
+                    line.setAttribute('stroke', 'black');
+                    line.setAttribute('stroke-width', '0.75');
+                    svg.appendChild(line);
+                });
+
+                // Also draw region boundary
+                if (region.boundary.length >= 3) {
+                    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                    let d = '';
+                    region.boundary.forEach((pt, i) => {
+                        d += (i === 0 ? 'M' : 'L') + (pt.x + w2).toFixed(1) + ',' + (-pt.y + h2).toFixed(1);
+                    });
+                    d += 'Z';
+                    path.setAttribute('d', d);
+                    path.setAttribute('fill', 'none');
+                    path.setAttribute('stroke', 'rgba(0,0,0,0.3)');
+                    path.setAttribute('stroke-width', '1.5');
+                    svg.appendChild(path);
+                }
+            });
+
+            console.timeEnd('GPU Hatches');
+            document.getElementById('stats').textContent =
+                `GPU Hatches: ${regions.length} regions, ${totalHatches} hatch lines`;
         }
 
         function animate() {

@@ -13,6 +13,8 @@
 import {
     WebGLRenderTarget,
     MeshNormalMaterial,
+    MeshDepthMaterial,
+    RGBADepthPacking,
     NearestFilter,
     Vector2,
     Vector3
@@ -36,7 +38,7 @@ import {
  */
 export function extractNormalRegions(renderer, scene, camera, options = {}) {
     const {
-        resolution = 4.0,        // Render at 4x for smooth boundaries
+        resolution = 2.0,        // Render at 2x for smooth boundaries
         normalBuckets = 12,      // Quantize normals into N directions
         minArea = 100,           // Minimum region area in pixels (at output scale)
         simplifyTolerance = 2.0
@@ -48,8 +50,9 @@ export function extractNormalRegions(renderer, scene, camera, options = {}) {
 
     console.log(`GPU Normal Regions: ${width}x${height}, ${normalBuckets} buckets`);
 
-    // Step 1: Render normals to texture
+    // Step 1: Render normals and depth to textures
     const normalPixels = renderNormals(renderer, scene, camera, width, height);
+    const depthPixels = renderDepth(renderer, scene, camera, width, height);
 
     // Step 2: Quantize normals to region IDs
     const { regionMap, normalLookup } = quantizeNormals(normalPixels, width, height, normalBuckets);
@@ -71,8 +74,12 @@ export function extractNormalRegions(renderer, scene, camera, options = {}) {
 
         if (area < minArea) continue;
 
+
         // Find the normal for this region (sample from center)
         const normal = findRegionNormal(labels, regionMap, normalLookup, width, height, regionId);
+
+        // Sample depth at region center
+        const depth = sampleRegionDepth(labels, depthPixels, width, height, regionId);
 
         regions.push({
             boundary: simplified.map(p => new Vector2(
@@ -80,6 +87,7 @@ export function extractNormalRegions(renderer, scene, camera, options = {}) {
                 (p.y / resolution) - size.y / 2  // Y already flipped during readback
             )),
             normal,
+            depth,  // 0-1 normalized depth
             area: area / (resolution * resolution),
             regionId
         });
@@ -140,6 +148,81 @@ function renderNormals(renderer, scene, camera, width, height) {
     normalMaterial.dispose();
 
     return pixels;
+}
+
+/**
+ * Render depth to pixel buffer
+ */
+function renderDepth(renderer, scene, camera, width, height) {
+    const target = new WebGLRenderTarget(width, height, {
+        minFilter: NearestFilter,
+        magFilter: NearestFilter
+    });
+
+    const depthMaterial = new MeshDepthMaterial({ depthPacking: RGBADepthPacking });
+
+    const originalMaterials = new Map();
+    const hiddenObjects = [];
+
+    scene.traverse(obj => {
+        if (obj.isMesh) {
+            originalMaterials.set(obj, obj.material);
+            obj.material = depthMaterial;
+        } else if (obj.isLineSegments || obj.isLine || obj.isPoints) {
+            if (obj.visible) {
+                hiddenObjects.push(obj);
+                obj.visible = false;
+            }
+        }
+    });
+
+    renderer.setRenderTarget(target);
+    renderer.render(scene, camera);
+
+    scene.traverse(obj => {
+        if (obj.isMesh && originalMaterials.has(obj)) {
+            obj.material = originalMaterials.get(obj);
+        }
+    });
+
+    for (const obj of hiddenObjects) {
+        obj.visible = true;
+    }
+
+    renderer.setRenderTarget(null);
+
+    const pixels = new Uint8Array(width * height * 4);
+    renderer.readRenderTargetPixels(target, 0, 0, width, height, pixels);
+
+    target.dispose();
+    depthMaterial.dispose();
+
+    return pixels;
+}
+
+/**
+ * Sample average depth for a region
+ */
+function sampleRegionDepth(labels, depthPixels, width, height, targetLabel) {
+    let sum = 0, count = 0;
+
+    for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+            if (labels[y * width + x] === targetLabel) {
+                const idx = (y * width + x) * 4;
+                // Unpack RGBA depth
+                const r = depthPixels[idx] / 255;
+                const g = depthPixels[idx + 1] / 255;
+                const b = depthPixels[idx + 2] / 255;
+                const a = depthPixels[idx + 3] / 255;
+                const depth = r + g / 256 + b / 65536 + a / 16777216;
+                sum += depth;
+                count++;
+            }
+        }
+    }
+
+    return count > 0 ? sum / count : 0.5;
 }
 
 /**
