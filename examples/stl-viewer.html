@@ -376,13 +376,15 @@
                 const spaceY = parseFloat(document.getElementById('spaceY').value) || 10.0;
                 const spaceZ = parseFloat(document.getElementById('spaceZ').value) || 10.0;
                 const spacings = new THREE.Vector3(spaceX, spaceY, spaceZ);
-
+                const hatchEdges = [];
+                /*
                 const hatchEdges = Slicer.computeSlices(mesh, {
                     spacing: spacing, // Fallback
                     offset: spacing * 0.1, // Small offset to avoid vertices
                     normal: normal,
                     spacings: spacings // PASS ABSOLUTE SPACINGS
                 });
+                */
 
                 const result = computeHiddenLinesMultiple([mesh], camera, scene, {
                     smoothThreshold: 0.99,

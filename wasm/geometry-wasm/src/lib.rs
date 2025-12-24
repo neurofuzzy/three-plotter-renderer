@@ -1114,6 +1114,11 @@ impl HiddenLineProcessor {
         let mut removed_count = 0;
         let mut edges_with_2plus_faces = 0;
         let mut edges_with_0_or_1_faces = 0;
+        let mut failed_similarity = 0;
+        let mut failed_distance = 0;
+        let mut sim_very_wrong = 0;  // 0 - 0.5
+        let mut sim_medium = 0;      // 0.5 - 0.9
+        let mut sim_close = 0;       // 0.9 - 0.99
         
         for edge in edges {
             // Find all faces that this edge lies along (geometrically)
@@ -1164,6 +1169,9 @@ impl HiddenLineProcessor {
                 let n0 = self.face_normal(adjacent_faces[0]);
                 let c0 = self.face_plane_constant(adjacent_faces[0]);
                 let mut all_coplanar = true;
+                let mut fail_reason = "";
+                let mut logged_sim = 0.0_f32;
+                let mut logged_dist = 0.0_f32;
                 
                 for i in 1..adjacent_faces.len() {
                     let ni = self.face_normal(adjacent_faces[i]);
@@ -1180,8 +1188,27 @@ impl HiddenLineProcessor {
                         (c0 + ci).abs() 
                     };
                     
-                    if similarity < coplanar_threshold || dist_diff >= distance_threshold {
+                    logged_sim = similarity;
+                    logged_dist = dist_diff;
+                    
+                    if similarity < coplanar_threshold {
                         all_coplanar = false;
+                        fail_reason = "similarity";
+                        failed_similarity += 1;
+                        // Track histogram
+                        if similarity < 0.5 {
+                            sim_very_wrong += 1;
+                        } else if similarity < 0.9 {
+                            sim_medium += 1;
+                        } else {
+                            sim_close += 1;
+                        }
+                        break;
+                    }
+                    if dist_diff >= distance_threshold {
+                        all_coplanar = false;
+                        fail_reason = "distance";
+                        failed_distance += 1;
                         break;
                     }
                 }
@@ -1204,6 +1231,14 @@ impl HiddenLineProcessor {
             "WASM straggler filter: {} edges, {} with 2+ adj faces, {} with 0-1 faces, {} removed",
             edges.len(), edges_with_2plus_faces, edges_with_0_or_1_faces, removed_count
         ).into());
+        console::log_1(&format!(
+            "  -> Failure reasons: {} failed similarity (<0.99), {} failed distance (>=0.5)",
+            failed_similarity, failed_distance
+        ).into());
+        console::log_1(&format!(
+            "  -> Similarity histogram: {} very wrong (0-0.5), {} medium (0.5-0.9), {} close (0.9-0.99)",
+            sim_very_wrong, sim_medium, sim_close
+        ).into());
         
         result
     }
@@ -1224,8 +1259,10 @@ impl HiddenLineProcessor {
         ax1: f32, ay1: f32, ax2: f32, ay2: f32,
         bx1: f32, by1: f32, bx2: f32, by2: f32
     ) -> bool {
-        // Match JS tolerance of 2.0 pixels, scaled by internal scale factor
-        let tolerance = 2.0_f32 * INTERNAL_SCALE;
+        // Match JS tolerance of 2.0 in scaled coordinate space
+        // JS: tolerance = 2.0, distSq < 4.0 in scaled space
+        // Since our coords are already scaled by INTERNAL_SCALE, use same tolerance
+        let tolerance = 2.0_f32;
         
         // Direction of segment B (the face edge)
         let dx = bx2 - bx1;
