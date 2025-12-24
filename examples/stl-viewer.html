@@ -354,7 +354,12 @@
                 path.setAttribute('fill', 'none');
                 svg.appendChild(path);
             } else {
-                // Normal rendering: Draw all visible edges
+                // Normal rendering: Draw all visible edges with three-tier coloring
+                // Colors: Silhouettes=Black, Normals=Dark Gray, Hatches=Light Gray
+                const silhouetteGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+                silhouetteGroup.id = 'silhouettes';
+                svg.appendChild(silhouetteGroup);
+
                 const edgesGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
                 edgesGroup.id = 'edges';
                 svg.appendChild(edgesGroup);
@@ -364,6 +369,7 @@
                 svg.appendChild(hatchGroup);
 
                 // Build paths for optimization
+                let silhouettePathD = '';
                 let modelPathD = '';
                 let hatchPathD = '';
 
@@ -376,26 +382,41 @@
 
                     if (edge.isHatch) {
                         hatchPathD += `M${x1},${y1}L${x2},${y2}`;
+                    } else if (edge.isSilhouette) {
+                        silhouettePathD += `M${x1},${y1}L${x2},${y2}`;
                     } else {
                         modelPathD += `M${x1},${y1}L${x2},${y2}`;
                     }
                 }
 
+                // Silhouettes: Black, same weight
+                if (silhouettePathD) {
+                    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                    path.setAttribute('d', silhouettePathD);
+                    path.setAttribute('stroke', '#000000');
+                    path.setAttribute('stroke-width', '1');
+                    path.setAttribute('stroke-linecap', 'round');
+                    path.setAttribute('fill', 'none');
+                    silhouetteGroup.appendChild(path);
+                }
+
+                // Normal edges: Dark gray
                 if (modelPathD) {
                     const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
                     path.setAttribute('d', modelPathD);
-                    path.setAttribute('stroke', '#000000');
-                    path.setAttribute('stroke-width', '1.5');
+                    path.setAttribute('stroke', '#555555');
+                    path.setAttribute('stroke-width', '1');
                     path.setAttribute('stroke-linecap', 'round');
                     path.setAttribute('fill', 'none');
                     edgesGroup.appendChild(path);
                 }
 
+                // Hatches: Light-mid gray
                 if (hatchPathD) {
                     const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
                     path.setAttribute('d', hatchPathD);
-                    path.setAttribute('stroke', '#ff0000');
-                    path.setAttribute('stroke-width', '0.5');
+                    path.setAttribute('stroke', '#999999');
+                    path.setAttribute('stroke-width', '1');
                     path.setAttribute('stroke-linecap', 'round');
                     path.setAttribute('fill', 'none');
                     hatchGroup.appendChild(path);

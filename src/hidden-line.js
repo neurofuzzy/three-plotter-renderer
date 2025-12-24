@@ -51,6 +51,7 @@ import {
  * @property {number} faceIdx - Parent face index
  * @property {Mesh} mesh - Parent mesh
  * @property {boolean} [isHatch] - Is this a hatch line?
+ * @property {boolean} [isSilhouette] - Is this a silhouette edge (borders void)?
  */
 
 /**
@@ -1914,6 +1915,11 @@ export function computeHiddenLinesMultiple(meshes, camera, scene, options = {}) 
     console.timeEnd('buildProjectedFaces');
     console.log(`Built ${projectedFaces.length} projected faces for occlusion`);
 
+    // Classify silhouette edges (edges that border the void) - BEFORE cleanup/optimization
+    console.time('classifySilhouettes');
+    classifySilhouettes(splitEdges, projectedFaces);
+    console.timeEnd('classifySilhouettes');
+
     // Geometric straggler filter: remove edges lying between coplanar faces
     console.time('filterSmoothSplitEdges');
     const smoothFilteredEdges = filterSmoothSplitEdges(splitEdges, projectedFaces, smoothThreshold, distanceThreshold);
@@ -1963,6 +1969,8 @@ export function computeHiddenLinesMultiple(meshes, camera, scene, options = {}) 
         console.log(`After optimization: ${optimizedFinal.length} edges`);
     }
 
+
+
     // Scale edges back down to original coordinate space
     for (const edge of optimizedFinal) {
         edge.a.x /= internalScale;
@@ -1978,4 +1986,135 @@ export function computeHiddenLinesMultiple(meshes, camera, scene, options = {}) 
         allEdges: splitEdges, // For debug visualization
         projectedFaces: projectedFaces  // For face visualization
     };
+}
+
+/**
+ * Classify edges as silhouettes if they border the void (one side has no mesh)
+ * Uses 2D ray casting from edge midpoint perpendicular to the edge
+ * @param {Edge2D[]} edges - Edges to classify
+ * @param {Object[]} projectedFaces - Projected triangles for hit testing
+ */
+function classifySilhouettes(edges, projectedFaces) {
+    const RAY_LENGTH = 1000; // Long ray to ensure we hit any face on that side
+
+    for (const edge of edges) {
+        // Hatches are never silhouettes
+        if (edge.isHatch) {
+            edge.isSilhouette = false;
+            continue;
+        }
+
+        // Calculate midpoint
+        const midX = (edge.a.x + edge.b.x) / 2;
+        const midY = (edge.a.y + edge.b.y) / 2;
+
+        // Calculate edge direction and perpendicular
+        const dx = edge.b.x - edge.a.x;
+        const dy = edge.b.y - edge.a.y;
+        const len = Math.sqrt(dx * dx + dy * dy);
+
+        if (len < 0.001) {
+            edge.isSilhouette = false;
+            continue;
+        }
+
+        // Perpendicular direction (normalized)
+        const perpX = -dy / len;
+        const perpY = dx / len;
+
+        // Raycast on each side - check if ray intersects any face edge
+        const leftHit = rayHitsAnyFace(midX, midY, perpX, perpY, RAY_LENGTH, projectedFaces);
+        const rightHit = rayHitsAnyFace(midX, midY, -perpX, -perpY, RAY_LENGTH, projectedFaces);
+
+        // Silhouette if one side has no intersection
+        edge.isSilhouette = !leftHit || !rightHit;
+    }
+
+    const silCount = edges.filter(e => e.isSilhouette).length;
+    console.log(`Classified ${silCount} silhouette edges out of ${edges.length}`);
+}
+
+/**
+ * Check if a 2D ray from origin in direction (dx, dy) intersects any projected triangle
+ */
+function rayHitsAnyFace(ox, oy, dx, dy, maxDist, faces) {
+    for (const face of faces) {
+        if (rayIntersectsTriangle(ox, oy, dx, dy, maxDist, face.a2d, face.b2d, face.c2d)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * Check if 2D ray intersects a triangle (any of its 3 edges)
+ */
+function rayIntersectsTriangle(ox, oy, rdx, rdy, maxDist, a, b, c) {
+    if (raySegmentIntersect(ox, oy, rdx, rdy, maxDist, a.x, a.y, b.x, b.y)) return true;
+    if (raySegmentIntersect(ox, oy, rdx, rdy, maxDist, b.x, b.y, c.x, c.y)) return true;
+    if (raySegmentIntersect(ox, oy, rdx, rdy, maxDist, c.x, c.y, a.x, a.y)) return true;
+    return false;
+}
+
+/**
+ * Check if 2D ray (origin ox,oy, direction rdx,rdy) intersects line segment (x1,y1)-(x2,y2)
+ */
+function raySegmentIntersect(ox, oy, rdx, rdy, maxDist, x1, y1, x2, y2) {
+    const sdx = x2 - x1;
+    const sdy = y2 - y1;
+
+    const denom = rdx * sdy - rdy * sdx;
+    if (Math.abs(denom) < 1e-10) return false; // Parallel
+
+    const t = ((x1 - ox) * sdy - (y1 - oy) * sdx) / denom;
+    const u = ((x1 - ox) * rdy - (y1 - oy) * rdx) / denom;
+
+    // t > 0.1 (past origin, small epsilon), t <= maxDist, u in [0,1] (on segment)
+    return t > 0.1 && t <= maxDist && u >= 0 && u <= 1;
+}
+
+/**
+ * Check if a 2D point is inside any projected triangle
+ * @param {number} px 
+ * @param {number} py 
+ * @param {Object[]} faces 
+ * @returns {boolean}
+ */
+function pointInAnyFace(px, py, faces) {
+    for (const face of faces) {
+        if (pointInTriangle(px, py, face.a2d, face.b2d, face.c2d)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * Check if point (px, py) is inside triangle (a, b, c) using barycentric coordinates
+ * @param {number} px 
+ * @param {number} py 
+ * @param {Vector2} a 
+ * @param {Vector2} b 
+ * @param {Vector2} c 
+ * @returns {boolean}
+ */
+function pointInTriangle(px, py, a, b, c) {
+    const v0x = c.x - a.x;
+    const v0y = c.y - a.y;
+    const v1x = b.x - a.x;
+    const v1y = b.y - a.y;
+    const v2x = px - a.x;
+    const v2y = py - a.y;
+
+    const dot00 = v0x * v0x + v0y * v0y;
+    const dot01 = v0x * v1x + v0y * v1y;
+    const dot02 = v0x * v2x + v0y * v2y;
+    const dot11 = v1x * v1x + v1y * v1y;
+    const dot12 = v1x * v2x + v1y * v2y;
+
+    const invDenom = 1 / (dot00 * dot11 - dot01 * dot01);
+    const u = (dot11 * dot02 - dot01 * dot12) * invDenom;
+    const v = (dot00 * dot12 - dot01 * dot02) * invDenom;
+
+    return (u >= 0) && (v >= 0) && (u + v <= 1);
 }
