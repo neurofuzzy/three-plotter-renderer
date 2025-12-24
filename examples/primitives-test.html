@@ -45,6 +45,7 @@
     <div id="info">
         <div>
             <button id="renderBtn">Render Hidden Lines</button>
+            <button id="wasmBtn">WASM Full Pipeline</button>
             <button id="exportBtn">Export SVG</button>
         </div>
         <div id="stats">Simple primitives: Pyramid, Cylinder, Icosahedron</div>
@@ -54,6 +55,7 @@
         import * as THREE from 'three';
         import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
         import { computeHiddenLines, computeHiddenLinesMultiple } from '../src/hidden-line.js';
+        import { createHiddenLineProcessor } from '../src/wasm-geometry.js';
 
         let scene, camera, renderer, controls;
         let pyramid, cylinder, sphere;
@@ -125,6 +127,7 @@
             // Event listeners
             window.addEventListener('resize', onResize);
             document.getElementById('renderBtn').addEventListener('click', computeAndDraw);
+            document.getElementById('wasmBtn').addEventListener('click', computeWASM);
             document.getElementById('exportBtn').addEventListener('click', exportSVG);
 
             animate();
@@ -207,6 +210,113 @@
 
                 drawToSVG(result.edges, result.allEdges);
             }, 50);
+        }
+
+        // WASM Full Pipeline test
+        function computeWASM() {
+            document.getElementById('stats').textContent = 'Computing via WASM full pipeline...';
+            const svg = document.getElementById('svg-overlay');
+            svg.innerHTML = '';
+
+            setTimeout(() => {
+                const startTime = performance.now();
+
+                const processor = createHiddenLineProcessor();
+                if (!processor) {
+                    document.getElementById('stats').textContent = 'WASM not available!';
+                    return;
+                }
+
+                const meshes = [pyramid, cylinder, sphere];
+
+                // Debug cylinder geometry
+                const geom = cylinder.geometry;
+                const idx = geom.index;
+                const pos = geom.attributes.position;
+                console.log('=== Cylinder Debug ===');
+                console.log('Vertices:', pos.count, 'Indices:', idx.count, 'Triangles:', idx.count / 3);
+
+                // Check for duplicate positions
+                const posMap = new Map();
+                for (let i = 0; i < pos.count; i++) {
+                    const key = `${pos.getX(i).toFixed(3)},${pos.getY(i).toFixed(3)},${pos.getZ(i).toFixed(3)}`;
+                    if (!posMap.has(key)) posMap.set(key, []);
+                    posMap.get(key).push(i);
+                }
+                let dupes = 0;
+                posMap.forEach(v => { if (v.length > 1) dupes++; });
+                console.log('Positions with duplicate vertex indices:', dupes);
+
+                processor.setMeshes(meshes);
+                processor.setCamera(camera, window.innerWidth, window.innerHeight);
+
+                const edges = processor.compute();
+
+                const elapsed = performance.now() - startTime;
+                document.getElementById('stats').textContent =
+                    `WASM: ${edges.length} edges in ${elapsed.toFixed(0)}ms`;
+
+                drawWASMEdges(edges);
+            }, 50);
+        }
+
+        function drawWASMEdges(edges) {
+            const svg = document.getElementById('svg-overlay');
+            svg.innerHTML = '';
+
+            const halfWidth = window.innerWidth / 2;
+            const halfHeight = window.innerHeight / 2;
+
+            let silhouetteD = '';
+            let creaseD = '';
+
+            for (const edge of edges) {
+                const x1 = edge.x1 + halfWidth;
+                const y1 = halfHeight + edge.y1;
+                const x2 = edge.x2 + halfWidth;
+                const y2 = halfHeight + edge.y2;
+
+                if (edge.type === 'silhouette') {
+                    silhouetteD += `M${x1},${y1}L${x2},${y2}`;
+                } else {
+                    creaseD += `M${x1},${y1}L${x2},${y2}`;
+                }
+            }
+
+            if (silhouetteD) {
+                const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                path.setAttribute('d', silhouetteD);
+                path.setAttribute('stroke', '#000000');
+                path.setAttribute('stroke-width', '2');
+                path.setAttribute('fill', 'none');
+                svg.appendChild(path);
+            }
+
+            if (creaseD) {
+                const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                path.setAttribute('d', creaseD);
+                path.setAttribute('stroke', '#666666');
+                path.setAttribute('stroke-width', '1');
+                path.setAttribute('fill', 'none');
+                svg.appendChild(path);
+            }
+
+            // Debug: draw circles at each edge vertex
+            for (const edge of edges) {
+                const x1 = edge.x1 + halfWidth;
+                const y1 = halfHeight + edge.y1;
+                const x2 = edge.x2 + halfWidth;
+                const y2 = halfHeight + edge.y2;
+
+                for (const [x, y] of [[x1, y1], [x2, y2]]) {
+                    const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+                    circle.setAttribute('cx', x);
+                    circle.setAttribute('cy', y);
+                    circle.setAttribute('r', '3');
+                    circle.setAttribute('fill', edge.type === 'silhouette' ? '#ff0000' : '#0000ff');
+                    svg.appendChild(circle);
+                }
+            }
         }
 
         // ... existing code ...

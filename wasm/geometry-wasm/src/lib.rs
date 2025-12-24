@@ -945,6 +945,560 @@ fn shape_to_segments_into(shape: &Shape, out: &mut Vec<f64>) {
     }
 }
 
+// =============================================================================
+// HIDDEN LINE PROCESSOR - Full pipeline in WASM
+// =============================================================================
+
+/// Edge type for classification in output
+const EDGE_SILHOUETTE: f32 = 0.0;
+const EDGE_CREASE: f32 = 1.0;
+const EDGE_HATCH: f32 = 2.0;
+
+/// A processor for hidden line removal.
+/// Receives mesh geometry and camera, computes visible edges entirely in WASM.
+#[wasm_bindgen]
+pub struct HiddenLineProcessor {
+    // Geometry: vertices as [x,y,z, x,y,z, ...]
+    vertices: Vec<f32>,
+    // Triangle indices as [i0,i1,i2, ...]
+    indices: Vec<u32>,
+    // Per-mesh ranges in indices array: [start0, count0, start1, count1, ...]
+    mesh_ranges: Vec<u32>,
+    // Camera view-projection matrix (4x4, column-major)
+    view_proj: [f32; 16],
+    // Camera position in world space
+    camera_pos: [f32; 3],
+    // Viewport size
+    width: f32,
+    height: f32,
+    // Crease angle threshold (dot product)
+    crease_threshold: f32,
+}
+
+#[wasm_bindgen]
+impl HiddenLineProcessor {
+    /// Create a new HiddenLineProcessor
+    #[wasm_bindgen(constructor)]
+    pub fn new() -> Self {
+        Self {
+            vertices: Vec::new(),
+            indices: Vec::new(),
+            mesh_ranges: Vec::new(),
+            view_proj: [
+                1.0, 0.0, 0.0, 0.0,
+                0.0, 1.0, 0.0, 0.0,
+                0.0, 0.0, 1.0, 0.0,
+                0.0, 0.0, 0.0, 1.0,
+            ],
+            camera_pos: [0.0, 0.0, 10.0],
+            width: 800.0,
+            height: 600.0,
+            crease_threshold: 0.99, // Match JS smoothThreshold (higher = more aggressive smoothing)
+        }
+    }
+    
+    /// Set geometry from flat arrays
+    /// vertices: [x,y,z, x,y,z, ...] in world space
+    /// indices: [i0,i1,i2, ...] triangle indices
+    /// mesh_ranges: [start0, count0, start1, count1, ...] per-mesh index ranges
+    #[wasm_bindgen]
+    pub fn set_geometry(&mut self, vertices: &[f32], indices: &[u32], mesh_ranges: &[u32]) {
+        self.vertices = vertices.to_vec();
+        self.indices = indices.to_vec();
+        self.mesh_ranges = mesh_ranges.to_vec();
+    }
+    
+    /// Set camera view-projection matrix, position, and viewport
+    #[wasm_bindgen]
+    pub fn set_camera(&mut self, view_proj: &[f32], camera_pos: &[f32], width: f32, height: f32) {
+        if view_proj.len() >= 16 {
+            self.view_proj.copy_from_slice(&view_proj[0..16]);
+        }
+        if camera_pos.len() >= 3 {
+            self.camera_pos = [camera_pos[0], camera_pos[1], camera_pos[2]];
+        }
+        self.width = width;
+        self.height = height;
+    }
+    
+    /// Set crease angle threshold (as cosine, 0.0 = 90°, 1.0 = 0°)
+    #[wasm_bindgen]
+    pub fn set_crease_threshold(&mut self, threshold: f32) {
+        self.crease_threshold = threshold;
+    }
+    
+    /// Compute visible edges
+    /// Returns flat array: [x1, y1, x2, y2, type, x1, y1, x2, y2, type, ...]
+    /// where type is 0=silhouette, 1=crease, 2=hatch
+    #[wasm_bindgen]
+    pub fn compute(&self) -> Vec<f32> {
+        if self.vertices.is_empty() || self.indices.is_empty() {
+            return Vec::new();
+        }
+        
+        // Step 1: Project all vertices to 2D
+        let projected = self.project_vertices();
+        
+        // Step 2: Extract edges with adjacency info
+        let edges = self.extract_edges();
+        
+        // Step 3: Classify edges (silhouette, crease, interior)
+        let classified = self.classify_edges(&edges, &projected);
+        
+        // Step 4: Build spatial hash for O(1) neighbor lookup
+        let hash = SpatialHash::new(&classified, 50.0);
+        
+        // Step 5: Find intersections and split edges
+        let split_edges = self.split_at_intersections(&classified, &hash);
+        
+        // Step 6: Test occlusion for each edge
+        let visible = self.test_occlusion(&split_edges, &projected);
+        
+        // Step 7: Output visible edges
+        visible
+    }
+    
+    /// Project all 3D vertices to 2D screen coordinates
+    fn project_vertices(&self) -> Vec<[f32; 3]> {
+        let mut result = Vec::with_capacity(self.vertices.len() / 3);
+        let half_w = self.width / 2.0;
+        let half_h = self.height / 2.0;
+        
+        for i in (0..self.vertices.len()).step_by(3) {
+            let x = self.vertices[i];
+            let y = self.vertices[i + 1];
+            let z = self.vertices[i + 2];
+            
+            // Apply view-projection matrix
+            let m = &self.view_proj;
+            let clip_x = m[0] * x + m[4] * y + m[8] * z + m[12];
+            let clip_y = m[1] * x + m[5] * y + m[9] * z + m[13];
+            let clip_z = m[2] * x + m[6] * y + m[10] * z + m[14];
+            let clip_w = m[3] * x + m[7] * y + m[11] * z + m[15];
+            
+            // Perspective divide
+            let ndc_x = clip_x / clip_w;
+            let ndc_y = clip_y / clip_w;
+            let depth = clip_z / clip_w;
+            
+            // Screen coordinates
+            let screen_x = ndc_x * half_w;
+            let screen_y = -ndc_y * half_h; // Flip Y for screen space
+            
+            result.push([screen_x, screen_y, depth]);
+        }
+        
+        result
+    }
+    
+    /// Extract unique edges from triangles with adjacency info
+    fn extract_edges(&self) -> Vec<Edge> {
+        use std::collections::HashMap;
+        
+        let mut edge_map: HashMap<(u32, u32), Edge> = HashMap::new();
+        
+        for mesh_idx in (0..self.mesh_ranges.len()).step_by(2) {
+            let start = self.mesh_ranges[mesh_idx] as usize;
+            let count = self.mesh_ranges[mesh_idx + 1] as usize;
+            
+            for tri in (start..start + count).step_by(3) {
+                if tri + 2 >= self.indices.len() {
+                    break;
+                }
+                let i0 = self.indices[tri];
+                let i1 = self.indices[tri + 1];
+                let i2 = self.indices[tri + 2];
+                let face_idx = (tri / 3) as u32;
+                
+                // Add three edges
+                for &(a, b) in &[(i0, i1), (i1, i2), (i2, i0)] {
+                    let key = if a < b { (a, b) } else { (b, a) };
+                    edge_map.entry(key)
+                        .and_modify(|e| e.face2 = Some(face_idx))
+                        .or_insert(Edge {
+                            v0: a,
+                            v1: b,
+                            face1: face_idx,
+                            face2: None,
+                            mesh_idx: (mesh_idx / 2) as u32,
+                        });
+                }
+            }
+        }
+        
+        edge_map.into_values().collect()
+    }
+    
+    /// Classify edges as silhouette, crease, or interior
+    fn classify_edges(&self, edges: &[Edge], projected: &[[f32; 3]]) -> Vec<ClassifiedEdge> {
+        let mut result = Vec::with_capacity(edges.len());
+        
+        for edge in edges {
+            let p0 = &projected[edge.v0 as usize];
+            let p1 = &projected[edge.v1 as usize];
+            
+            // Compute view direction from edge midpoint to camera
+            let i0 = edge.v0 as usize;
+            let i1 = edge.v1 as usize;
+            let mid_x = (self.vertices[i0 * 3] + self.vertices[i1 * 3]) / 2.0;
+            let mid_y = (self.vertices[i0 * 3 + 1] + self.vertices[i1 * 3 + 1]) / 2.0;
+            let mid_z = (self.vertices[i0 * 3 + 2] + self.vertices[i1 * 3 + 2]) / 2.0;
+            
+            let view_x = self.camera_pos[0] - mid_x;
+            let view_y = self.camera_pos[1] - mid_y;
+            let view_z = self.camera_pos[2] - mid_z;
+            let view_len = (view_x * view_x + view_y * view_y + view_z * view_z).sqrt();
+            let cam_dir = if view_len > 0.0001 {
+                (view_x / view_len, view_y / view_len, view_z / view_len)
+            } else {
+                (0.0, 0.0, 1.0)
+            };
+            
+            // Compute face normals and facing
+            let n1 = self.face_normal(edge.face1);
+            let dot1 = n1.0 * cam_dir.0 + n1.1 * cam_dir.1 + n1.2 * cam_dir.2;
+            let face1_front = dot1 > 0.0;
+            
+            let edge_type = if let Some(face2) = edge.face2 {
+                let n2 = self.face_normal(face2);
+                let dot2 = n2.0 * cam_dir.0 + n2.1 * cam_dir.1 + n2.2 * cam_dir.2;
+                let face2_front = dot2 > 0.0;
+                let dot = n1.0 * n2.0 + n1.1 * n2.1 + n1.2 * n2.2;
+                
+                if !face1_front && !face2_front {
+                    // Both faces back-facing: skip edge entirely
+                    EdgeType::Interior
+                } else if face1_front != face2_front {
+                    // One front, one back: silhouette edge
+                    EdgeType::Silhouette
+                } else if dot < self.crease_threshold {
+                    // Both front-facing but with a crease
+                    EdgeType::Crease
+                } else {
+                    // Both front-facing and smooth
+                    EdgeType::Interior
+                }
+            } else {
+                // Boundary edge (only one face)
+                if face1_front {
+                    // Face is front-facing: show as silhouette
+                    EdgeType::Silhouette
+                } else {
+                    // Face is back-facing: don't show
+                    EdgeType::Interior
+                }
+            };
+            
+            // Skip interior edges
+            if matches!(edge_type, EdgeType::Interior) {
+                continue;
+            }
+            
+            result.push(ClassifiedEdge {
+                x1: p0[0], y1: p0[1], depth1: p0[2],
+                x2: p1[0], y2: p1[1], depth2: p1[2],
+                edge_type,
+                face1: edge.face1,
+                face2: edge.face2,
+                mesh_idx: edge.mesh_idx,
+            });
+        }
+        
+        result
+    }
+    
+    /// Compute face normal from triangle indices
+    fn face_normal(&self, face_idx: u32) -> (f32, f32, f32) {
+        let base = (face_idx as usize) * 3;
+        if base + 2 >= self.indices.len() {
+            return (0.0, 0.0, 1.0);
+        }
+        
+        let i0 = self.indices[base] as usize;
+        let i1 = self.indices[base + 1] as usize;
+        let i2 = self.indices[base + 2] as usize;
+        
+        let v0 = (
+            self.vertices[i0 * 3],
+            self.vertices[i0 * 3 + 1],
+            self.vertices[i0 * 3 + 2],
+        );
+        let v1 = (
+            self.vertices[i1 * 3],
+            self.vertices[i1 * 3 + 1],
+            self.vertices[i1 * 3 + 2],
+        );
+        let v2 = (
+            self.vertices[i2 * 3],
+            self.vertices[i2 * 3 + 1],
+            self.vertices[i2 * 3 + 2],
+        );
+        
+        // Edge vectors
+        let e1 = (v1.0 - v0.0, v1.1 - v0.1, v1.2 - v0.2);
+        let e2 = (v2.0 - v0.0, v2.1 - v0.1, v2.2 - v0.2);
+        
+        // Cross product
+        let nx = e1.1 * e2.2 - e1.2 * e2.1;
+        let ny = e1.2 * e2.0 - e1.0 * e2.2;
+        let nz = e1.0 * e2.1 - e1.1 * e2.0;
+        
+        // Normalize
+        let len = (nx * nx + ny * ny + nz * nz).sqrt();
+        if len > 0.0001 {
+            (nx / len, ny / len, nz / len)
+        } else {
+            (0.0, 0.0, 1.0)
+        }
+    }
+    
+    /// Split edges at intersections with other edges
+    fn split_at_intersections(&self, edges: &[ClassifiedEdge], _hash: &SpatialHash) -> Vec<ClassifiedEdge> {
+        let mut result = Vec::with_capacity(edges.len() * 2);
+        
+        // For each edge, collect all intersection t-values
+        for (i, edge) in edges.iter().enumerate() {
+            let mut t_values: Vec<f32> = vec![0.0, 1.0]; // Start and end
+            
+            // Check against all other edges for intersections
+            for (j, other) in edges.iter().enumerate() {
+                if i == j { continue; }
+                
+                // 2D line-line intersection
+                if let Some((t, _u)) = Self::segment_intersection_2d(
+                    edge.x1, edge.y1, edge.x2, edge.y2,
+                    other.x1, other.y1, other.x2, other.y2,
+                ) {
+                    // Only add if intersection is strictly inside this edge
+                    if t > 0.001 && t < 0.999 {
+                        t_values.push(t);
+                    }
+                }
+            }
+            
+            // Sort t values and remove duplicates
+            t_values.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+            t_values.dedup_by(|a, b| (*a - *b).abs() < 0.001);
+            
+            // Create edge segments between consecutive t values
+            for k in 0..t_values.len() - 1 {
+                let t0 = t_values[k];
+                let t1 = t_values[k + 1];
+                
+                // Skip very small segments
+                if t1 - t0 < 0.001 { continue; }
+                
+                // Interpolate endpoints
+                let x1 = edge.x1 + t0 * (edge.x2 - edge.x1);
+                let y1 = edge.y1 + t0 * (edge.y2 - edge.y1);
+                let d1 = edge.depth1 + t0 * (edge.depth2 - edge.depth1);
+                
+                let x2 = edge.x1 + t1 * (edge.x2 - edge.x1);
+                let y2 = edge.y1 + t1 * (edge.y2 - edge.y1);
+                let d2 = edge.depth1 + t1 * (edge.depth2 - edge.depth1);
+                
+                result.push(ClassifiedEdge {
+                    x1, y1, depth1: d1,
+                    x2, y2, depth2: d2,
+                    edge_type: edge.edge_type.clone(),
+                    face1: edge.face1,
+                    face2: edge.face2,
+                    mesh_idx: edge.mesh_idx,
+                });
+            }
+        }
+        
+        result
+    }
+    
+    /// Find 2D segment-segment intersection, returns (t, u) parameters
+    fn segment_intersection_2d(
+        ax1: f32, ay1: f32, ax2: f32, ay2: f32,
+        bx1: f32, by1: f32, bx2: f32, by2: f32,
+    ) -> Option<(f32, f32)> {
+        let dx1 = ax2 - ax1;
+        let dy1 = ay2 - ay1;
+        let dx2 = bx2 - bx1;
+        let dy2 = by2 - by1;
+        
+        let denom = dx1 * dy2 - dy1 * dx2;
+        if denom.abs() < 0.0001 { return None; } // Parallel
+        
+        let dx = bx1 - ax1;
+        let dy = by1 - ay1;
+        
+        let t = (dx * dy2 - dy * dx2) / denom;
+        let u = (dx * dy1 - dy * dx1) / denom;
+        
+        // Both t and u must be in [0, 1] for segments to intersect
+        if t >= 0.0 && t <= 1.0 && u >= 0.0 && u <= 1.0 {
+            Some((t, u))
+        } else {
+            None
+        }
+    }
+    
+    /// Test occlusion for each edge against all triangles
+    fn test_occlusion(&self, edges: &[ClassifiedEdge], projected: &[[f32; 3]]) -> Vec<f32> {
+        let mut visible = Vec::new();
+        let num_tris = self.indices.len() / 3;
+        
+        for edge in edges {
+            // Test edge midpoint
+            let mid_x = (edge.x1 + edge.x2) / 2.0;
+            let mid_y = (edge.y1 + edge.y2) / 2.0;
+            let mid_depth = (edge.depth1 + edge.depth2) / 2.0;
+            
+            let mut occluded = false;
+            
+            // Check against all triangles
+            for tri in 0..num_tris {
+                let i0 = self.indices[tri * 3] as usize;
+                let i1 = self.indices[tri * 3 + 1] as usize;
+                let i2 = self.indices[tri * 3 + 2] as usize;
+                
+                // Skip if this triangle is the edge's parent
+                if tri as u32 == edge.face1 || Some(tri as u32) == edge.face2 {
+                    continue;
+                }
+                
+                let p0 = &projected[i0];
+                let p1 = &projected[i1];
+                let p2 = &projected[i2];
+                
+                // Point-in-triangle test
+                if !Self::point_in_triangle_2d(mid_x, mid_y, p0[0], p0[1], p1[0], p1[1], p2[0], p2[1]) {
+                    continue;
+                }
+                
+                // Compute depth at point using barycentric interpolation
+                let tri_depth = Self::barycentric_depth(
+                    mid_x, mid_y,
+                    p0[0], p0[1], p1[0], p1[1], p2[0], p2[1],
+                    p0[2], p1[2], p2[2]
+                );
+                
+                // If triangle is closer, edge is occluded
+                if tri_depth < mid_depth - 0.001 {
+                    occluded = true;
+                    break;
+                }
+            }
+            
+            if !occluded {
+                visible.push(edge.x1);
+                visible.push(edge.y1);
+                visible.push(edge.x2);
+                visible.push(edge.y2);
+                visible.push(match edge.edge_type {
+                    EdgeType::Silhouette => EDGE_SILHOUETTE,
+                    EdgeType::Crease => EDGE_CREASE,
+                    EdgeType::Hatch => EDGE_HATCH,
+                    EdgeType::Interior => EDGE_CREASE,
+                });
+            }
+        }
+        
+        visible
+    }
+    
+    fn point_in_triangle_2d(px: f32, py: f32, ax: f32, ay: f32, bx: f32, by: f32, cx: f32, cy: f32) -> bool {
+        let d1 = (px - bx) * (ay - by) - (ax - bx) * (py - by);
+        let d2 = (px - cx) * (by - cy) - (bx - cx) * (py - cy);
+        let d3 = (px - ax) * (cy - ay) - (cx - ax) * (py - ay);
+        
+        let has_neg = d1 < 0.0 || d2 < 0.0 || d3 < 0.0;
+        let has_pos = d1 > 0.0 || d2 > 0.0 || d3 > 0.0;
+        
+        !(has_neg && has_pos)
+    }
+    
+    fn barycentric_depth(
+        px: f32, py: f32,
+        ax: f32, ay: f32, bx: f32, by: f32, cx: f32, cy: f32,
+        da: f32, db: f32, dc: f32
+    ) -> f32 {
+        let v0x = cx - ax;
+        let v0y = cy - ay;
+        let v1x = bx - ax;
+        let v1y = by - ay;
+        let v2x = px - ax;
+        let v2y = py - ay;
+        
+        let dot00 = v0x * v0x + v0y * v0y;
+        let dot01 = v0x * v1x + v0y * v1y;
+        let dot02 = v0x * v2x + v0y * v2y;
+        let dot11 = v1x * v1x + v1y * v1y;
+        let dot12 = v1x * v2x + v1y * v2y;
+        
+        let inv_denom = 1.0 / (dot00 * dot11 - dot01 * dot01);
+        let u = (dot11 * dot02 - dot01 * dot12) * inv_denom;
+        let v = (dot00 * dot12 - dot01 * dot02) * inv_denom;
+        
+        da * (1.0 - u - v) + db * v + dc * u
+    }
+}
+
+// Internal types for HiddenLineProcessor
+struct Edge {
+    v0: u32,
+    v1: u32,
+    face1: u32,
+    face2: Option<u32>,
+    mesh_idx: u32,
+}
+
+#[derive(Clone, Copy)]
+enum EdgeType {
+    Silhouette,
+    Crease,
+    Interior,
+    Hatch,
+}
+
+#[derive(Clone)]
+struct ClassifiedEdge {
+    x1: f32, y1: f32, depth1: f32,
+    x2: f32, y2: f32, depth2: f32,
+    edge_type: EdgeType,
+    face1: u32,
+    face2: Option<u32>,
+    mesh_idx: u32,
+}
+
+/// Simple spatial hash for O(1) neighbor lookup
+struct SpatialHash {
+    cell_size: f32,
+    cells: std::collections::HashMap<(i32, i32), Vec<usize>>,
+}
+
+impl SpatialHash {
+    fn new(edges: &[ClassifiedEdge], cell_size: f32) -> Self {
+        use std::collections::HashMap;
+        let mut cells: HashMap<(i32, i32), Vec<usize>> = HashMap::new();
+        
+        for (i, edge) in edges.iter().enumerate() {
+            let min_x = edge.x1.min(edge.x2);
+            let max_x = edge.x1.max(edge.x2);
+            let min_y = edge.y1.min(edge.y2);
+            let max_y = edge.y1.max(edge.y2);
+            
+            let start_cx = (min_x / cell_size).floor() as i32;
+            let end_cx = (max_x / cell_size).floor() as i32;
+            let start_cy = (min_y / cell_size).floor() as i32;
+            let end_cy = (max_y / cell_size).floor() as i32;
+            
+            for cx in start_cx..=end_cx {
+                for cy in start_cy..=end_cy {
+                    cells.entry((cx, cy)).or_default().push(i);
+                }
+            }
+        }
+        
+        Self { cell_size, cells }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

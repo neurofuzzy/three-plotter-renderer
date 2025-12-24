@@ -41,6 +41,36 @@ export class BooleanProcessor {
   add_clip(points: Float64Array): void;
 }
 
+export class HiddenLineProcessor {
+  free(): void;
+  [Symbol.dispose](): void;
+  /**
+   * Set camera view-projection matrix, position, and viewport
+   */
+  set_camera(view_proj: Float32Array, camera_pos: Float32Array, width: number, height: number): void;
+  /**
+   * Set geometry from flat arrays
+   * vertices: [x,y,z, x,y,z, ...] in world space
+   * indices: [i0,i1,i2, ...] triangle indices
+   * mesh_ranges: [start0, count0, start1, count1, ...] per-mesh index ranges
+   */
+  set_geometry(vertices: Float32Array, indices: Uint32Array, mesh_ranges: Uint32Array): void;
+  /**
+   * Set crease angle threshold (as cosine, 0.0 = 90°, 1.0 = 0°)
+   */
+  set_crease_threshold(threshold: number): void;
+  /**
+   * Create a new HiddenLineProcessor
+   */
+  constructor();
+  /**
+   * Compute visible edges
+   * Returns flat array: [x1, y1, x2, y2, type, x1, y1, x2, y2, type, ...]
+   * where type is 0=silhouette, 1=crease, 2=hatch
+   */
+  compute(): Float32Array;
+}
+
 /**
  * Batch segment-segment intersection for array of segments
  * Input: segments as flat array [ax1, ay1, ax2, ay2, bx1, by1, bx2, by2, ...]
@@ -159,6 +189,7 @@ export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembl
 export interface InitOutput {
   readonly memory: WebAssembly.Memory;
   readonly __wbg_booleanprocessor_free: (a: number, b: number) => void;
+  readonly __wbg_hiddenlineprocessor_free: (a: number, b: number) => void;
   readonly batch_segment_intersections: (a: number, b: number) => [number, number];
   readonly booleanprocessor_add_clip: (a: number, b: number, c: number) => void;
   readonly booleanprocessor_add_subject: (a: number, b: number, c: number) => void;
@@ -173,6 +204,11 @@ export interface InitOutput {
   readonly difference_polygons: (a: number, b: number, c: number, d: number) => [number, number];
   readonly distance_between: (a: number, b: number, c: number, d: number) => number;
   readonly distance_point_segment: (a: number, b: number, c: number, d: number, e: number, f: number) => number;
+  readonly hiddenlineprocessor_compute: (a: number) => [number, number];
+  readonly hiddenlineprocessor_new: () => number;
+  readonly hiddenlineprocessor_set_camera: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => void;
+  readonly hiddenlineprocessor_set_crease_threshold: (a: number, b: number) => void;
+  readonly hiddenlineprocessor_set_geometry: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => void;
   readonly merge_colinear_segments: (a: number, b: number) => [number, number];
   readonly optimize_segments: (a: number, b: number, c: number, d: number, e: number) => [number, number];
   readonly point_in_triangle: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => number;

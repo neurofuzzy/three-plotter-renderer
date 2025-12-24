@@ -2,6 +2,7 @@
 /* eslint-disable */
 export const memory: WebAssembly.Memory;
 export const __wbg_booleanprocessor_free: (a: number, b: number) => void;
+export const __wbg_hiddenlineprocessor_free: (a: number, b: number) => void;
 export const batch_segment_intersections: (a: number, b: number) => [number, number];
 export const booleanprocessor_add_clip: (a: number, b: number, c: number) => void;
 export const booleanprocessor_add_subject: (a: number, b: number, c: number) => void;
@@ -16,6 +17,11 @@ export const dedupe_segments: (a: number, b: number) => [number, number];
 export const difference_polygons: (a: number, b: number, c: number, d: number) => [number, number];
 export const distance_between: (a: number, b: number, c: number, d: number) => number;
 export const distance_point_segment: (a: number, b: number, c: number, d: number, e: number, f: number) => number;
+export const hiddenlineprocessor_compute: (a: number) => [number, number];
+export const hiddenlineprocessor_new: () => number;
+export const hiddenlineprocessor_set_camera: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => void;
+export const hiddenlineprocessor_set_crease_threshold: (a: number, b: number) => void;
+export const hiddenlineprocessor_set_geometry: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => void;
 export const merge_colinear_segments: (a: number, b: number) => [number, number];
 export const optimize_segments: (a: number, b: number, c: number, d: number, e: number) => [number, number];
 export const point_in_triangle: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => number;

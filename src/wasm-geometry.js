@@ -299,8 +299,171 @@ export function sliceTriangles(triangles, normal, spacing, offset) {
     ));
 }
 
+// =============================================================================
+// HIDDEN LINE PROCESSOR - Full pipeline in WASM
+// =============================================================================
+
+/** @type {any} */
+let hiddenLineProcessor = null;
+
+/**
+ * Create or get the HiddenLineProcessor singleton
+ * @returns {HiddenLineProcessorWrapper | null}
+ */
+export function createHiddenLineProcessor() {
+    if (!wasmReady || !wasmModule) {
+        console.warn('[geometry-wasm] WASM not ready for HiddenLineProcessor');
+        return null;
+    }
+    if (!hiddenLineProcessor) {
+        hiddenLineProcessor = new wasmModule.HiddenLineProcessor();
+    }
+    return new HiddenLineProcessorWrapper(hiddenLineProcessor);
+}
+
+/**
+ * JS wrapper for the WASM HiddenLineProcessor
+ */
+class HiddenLineProcessorWrapper {
+    /** @param {any} wasmProcessor */
+    constructor(wasmProcessor) {
+        this._processor = wasmProcessor;
+    }
+
+    /**
+     * Set geometry from Three.js meshes
+     * @param {import('three').Mesh[]} meshes
+     */
+    setMeshes(meshes) {
+        const vertices = [];
+        const indices = [];
+        const meshRanges = [];
+
+        // Map from position key to merged vertex index
+        /** @type {Map<string, number>} */
+        const positionToIndex = new Map();
+        const PRECISION = 1000; // 3 decimal places
+
+        for (const mesh of meshes) {
+            mesh.updateMatrixWorld(true);
+            const geometry = mesh.geometry;
+            const posAttr = geometry.attributes.position;
+            const indexAttr = geometry.index;
+            if (!posAttr) continue;
+
+            const startIndex = indices.length;
+            const matrix = mesh.matrixWorld;
+
+            // Map from original vertex index to merged index
+            /** @type {number[]} */
+            const localToMerged = [];
+
+            // Extract vertices in world space, merging duplicates
+            for (let i = 0; i < posAttr.count; i++) {
+                const x = posAttr.getX(i);
+                const y = posAttr.getY(i);
+                const z = posAttr.getZ(i);
+                const wx = matrix.elements[0] * x + matrix.elements[4] * y + matrix.elements[8] * z + matrix.elements[12];
+                const wy = matrix.elements[1] * x + matrix.elements[5] * y + matrix.elements[9] * z + matrix.elements[13];
+                const wz = matrix.elements[2] * x + matrix.elements[6] * y + matrix.elements[10] * z + matrix.elements[14];
+
+                // Create position key for merging
+                const key = `${Math.round(wx * PRECISION)},${Math.round(wy * PRECISION)},${Math.round(wz * PRECISION)}`;
+
+                let mergedIndex = positionToIndex.get(key);
+                if (mergedIndex === undefined) {
+                    mergedIndex = vertices.length / 3;
+                    positionToIndex.set(key, mergedIndex);
+                    vertices.push(wx, wy, wz);
+                }
+                localToMerged.push(mergedIndex);
+            }
+
+            // Extract indices, remapping to merged vertices
+            if (indexAttr) {
+                for (let i = 0; i < indexAttr.count; i++) {
+                    const originalIdx = indexAttr.getX(i);
+                    indices.push(localToMerged[originalIdx]);
+                }
+            } else {
+                for (let i = 0; i < posAttr.count; i++) {
+                    indices.push(localToMerged[i]);
+                }
+            }
+
+            meshRanges.push(startIndex, indices.length - startIndex);
+        }
+
+        this._processor.set_geometry(
+            new Float32Array(vertices),
+            new Uint32Array(indices),
+            new Uint32Array(meshRanges)
+        );
+    }
+
+    /**
+     * Set camera for projection
+     * @param {import('three').Camera} camera
+     * @param {number} width
+     * @param {number} height
+     */
+    setCamera(camera, width, height) {
+        camera.updateMatrixWorld(true);
+        // @ts-ignore - PerspectiveCamera has updateProjectionMatrix
+        if (camera.updateProjectionMatrix) camera.updateProjectionMatrix();
+
+        const v = camera.matrixWorldInverse.elements;
+        const p = camera.projectionMatrix.elements;
+        const vp = new Float32Array(16);
+
+        // proj * view (column-major)
+        for (let i = 0; i < 4; i++) {
+            for (let j = 0; j < 4; j++) {
+                vp[i * 4 + j] = p[j] * v[i * 4] + p[j + 4] * v[i * 4 + 1] + p[j + 8] * v[i * 4 + 2] + p[j + 12] * v[i * 4 + 3];
+            }
+        }
+
+        // Extract camera world position
+        const camPos = new Float32Array([
+            camera.matrixWorld.elements[12],
+            camera.matrixWorld.elements[13],
+            camera.matrixWorld.elements[14]
+        ]);
+
+        this._processor.set_camera(vp, camPos, width, height);
+    }
+
+    /** @param {number} threshold Cosine of angle (0.7 = ~45°) */
+    setCreaseThreshold(threshold) {
+        this._processor.set_crease_threshold(threshold);
+    }
+
+    /**
+     * Compute visible edges
+     * @returns {{x1: number, y1: number, x2: number, y2: number, type: 'silhouette' | 'crease' | 'hatch'}[]}
+     */
+    compute() {
+        const result = this._processor.compute();
+        const edges = [];
+        let silCount = 0, creaseCount = 0;
+        for (let i = 0; i < result.length; i += 5) {
+            const typeCode = result[i + 4];
+            if (typeCode === 0) silCount++;
+            else creaseCount++;
+            edges.push({
+                x1: result[i],
+                y1: result[i + 1],
+                x2: result[i + 2],
+                y2: result[i + 3],
+                type: typeCode === 0 ? 'silhouette' : (typeCode === 2 ? 'hatch' : 'crease')
+            });
+        }
+        console.log(`[WASM] Edges: ${edges.length} (${silCount} silhouette, ${creaseCount} crease)`);
+        return edges;
+    }
+}
+
 // Auto-initialize WASM on module load
 initWasm().catch(() => {
     // Silently fail, fallback to JS implementation
 });
-

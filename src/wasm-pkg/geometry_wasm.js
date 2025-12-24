@@ -1,5 +1,10 @@
 let wasm;
 
+function getArrayF32FromWasm0(ptr, len) {
+    ptr = ptr >>> 0;
+    return getFloat32ArrayMemory0().subarray(ptr / 4, ptr / 4 + len);
+}
+
 function getArrayF64FromWasm0(ptr, len) {
     ptr = ptr >>> 0;
     return getFloat64ArrayMemory0().subarray(ptr / 8, ptr / 8 + len);
@@ -11,6 +16,14 @@ function getDataViewMemory0() {
         cachedDataViewMemory0 = new DataView(wasm.memory.buffer);
     }
     return cachedDataViewMemory0;
+}
+
+let cachedFloat32ArrayMemory0 = null;
+function getFloat32ArrayMemory0() {
+    if (cachedFloat32ArrayMemory0 === null || cachedFloat32ArrayMemory0.byteLength === 0) {
+        cachedFloat32ArrayMemory0 = new Float32Array(wasm.memory.buffer);
+    }
+    return cachedFloat32ArrayMemory0;
 }
 
 let cachedFloat64ArrayMemory0 = null;
@@ -26,12 +39,34 @@ function getStringFromWasm0(ptr, len) {
     return decodeText(ptr, len);
 }
 
+let cachedUint32ArrayMemory0 = null;
+function getUint32ArrayMemory0() {
+    if (cachedUint32ArrayMemory0 === null || cachedUint32ArrayMemory0.byteLength === 0) {
+        cachedUint32ArrayMemory0 = new Uint32Array(wasm.memory.buffer);
+    }
+    return cachedUint32ArrayMemory0;
+}
+
 let cachedUint8ArrayMemory0 = null;
 function getUint8ArrayMemory0() {
     if (cachedUint8ArrayMemory0 === null || cachedUint8ArrayMemory0.byteLength === 0) {
         cachedUint8ArrayMemory0 = new Uint8Array(wasm.memory.buffer);
     }
     return cachedUint8ArrayMemory0;
+}
+
+function passArray32ToWasm0(arg, malloc) {
+    const ptr = malloc(arg.length * 4, 4) >>> 0;
+    getUint32ArrayMemory0().set(arg, ptr / 4);
+    WASM_VECTOR_LEN = arg.length;
+    return ptr;
+}
+
+function passArrayF32ToWasm0(arg, malloc) {
+    const ptr = malloc(arg.length * 4, 4) >>> 0;
+    getFloat32ArrayMemory0().set(arg, ptr / 4);
+    WASM_VECTOR_LEN = arg.length;
+    return ptr;
 }
 
 function passArrayF64ToWasm0(arg, malloc) {
@@ -110,6 +145,10 @@ let WASM_VECTOR_LEN = 0;
 const BooleanProcessorFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
     : new FinalizationRegistry(ptr => wasm.__wbg_booleanprocessor_free(ptr >>> 0, 1));
+
+const HiddenLineProcessorFinalization = (typeof FinalizationRegistry === 'undefined')
+    ? { register: () => {}, unregister: () => {} }
+    : new FinalizationRegistry(ptr => wasm.__wbg_hiddenlineprocessor_free(ptr >>> 0, 1));
 
 /**
  * A processor for boolean operations on polygons.
@@ -200,6 +239,84 @@ export class BooleanProcessor {
     }
 }
 if (Symbol.dispose) BooleanProcessor.prototype[Symbol.dispose] = BooleanProcessor.prototype.free;
+
+/**
+ * A processor for hidden line removal.
+ * Receives mesh geometry and camera, computes visible edges entirely in WASM.
+ */
+export class HiddenLineProcessor {
+    __destroy_into_raw() {
+        const ptr = this.__wbg_ptr;
+        this.__wbg_ptr = 0;
+        HiddenLineProcessorFinalization.unregister(this);
+        return ptr;
+    }
+    free() {
+        const ptr = this.__destroy_into_raw();
+        wasm.__wbg_hiddenlineprocessor_free(ptr, 0);
+    }
+    /**
+     * Set camera view-projection matrix, position, and viewport
+     * @param {Float32Array} view_proj
+     * @param {Float32Array} camera_pos
+     * @param {number} width
+     * @param {number} height
+     */
+    set_camera(view_proj, camera_pos, width, height) {
+        const ptr0 = passArrayF32ToWasm0(view_proj, wasm.__wbindgen_malloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passArrayF32ToWasm0(camera_pos, wasm.__wbindgen_malloc);
+        const len1 = WASM_VECTOR_LEN;
+        wasm.hiddenlineprocessor_set_camera(this.__wbg_ptr, ptr0, len0, ptr1, len1, width, height);
+    }
+    /**
+     * Set geometry from flat arrays
+     * vertices: [x,y,z, x,y,z, ...] in world space
+     * indices: [i0,i1,i2, ...] triangle indices
+     * mesh_ranges: [start0, count0, start1, count1, ...] per-mesh index ranges
+     * @param {Float32Array} vertices
+     * @param {Uint32Array} indices
+     * @param {Uint32Array} mesh_ranges
+     */
+    set_geometry(vertices, indices, mesh_ranges) {
+        const ptr0 = passArrayF32ToWasm0(vertices, wasm.__wbindgen_malloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passArray32ToWasm0(indices, wasm.__wbindgen_malloc);
+        const len1 = WASM_VECTOR_LEN;
+        const ptr2 = passArray32ToWasm0(mesh_ranges, wasm.__wbindgen_malloc);
+        const len2 = WASM_VECTOR_LEN;
+        wasm.hiddenlineprocessor_set_geometry(this.__wbg_ptr, ptr0, len0, ptr1, len1, ptr2, len2);
+    }
+    /**
+     * Set crease angle threshold (as cosine, 0.0 = 90°, 1.0 = 0°)
+     * @param {number} threshold
+     */
+    set_crease_threshold(threshold) {
+        wasm.hiddenlineprocessor_set_crease_threshold(this.__wbg_ptr, threshold);
+    }
+    /**
+     * Create a new HiddenLineProcessor
+     */
+    constructor() {
+        const ret = wasm.hiddenlineprocessor_new();
+        this.__wbg_ptr = ret >>> 0;
+        HiddenLineProcessorFinalization.register(this, this.__wbg_ptr, this);
+        return this;
+    }
+    /**
+     * Compute visible edges
+     * Returns flat array: [x1, y1, x2, y2, type, x1, y1, x2, y2, type, ...]
+     * where type is 0=silhouette, 1=crease, 2=hatch
+     * @returns {Float32Array}
+     */
+    compute() {
+        const ret = wasm.hiddenlineprocessor_compute(this.__wbg_ptr);
+        var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
+}
+if (Symbol.dispose) HiddenLineProcessor.prototype[Symbol.dispose] = HiddenLineProcessor.prototype.free;
 
 /**
  * Batch segment-segment intersection for array of segments
@@ -574,7 +691,9 @@ function __wbg_finalize_init(instance, module) {
     wasm = instance.exports;
     __wbg_init.__wbindgen_wasm_module = module;
     cachedDataViewMemory0 = null;
+    cachedFloat32ArrayMemory0 = null;
     cachedFloat64ArrayMemory0 = null;
+    cachedUint32ArrayMemory0 = null;
     cachedUint8ArrayMemory0 = null;
 
 
