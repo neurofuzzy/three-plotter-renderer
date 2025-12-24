@@ -202,6 +202,56 @@ export class BooleanProcessor {
 if (Symbol.dispose) BooleanProcessor.prototype[Symbol.dispose] = BooleanProcessor.prototype.free;
 
 /**
+ * Batch segment-segment intersection for array of segments
+ * Input: segments as flat array [ax1, ay1, ax2, ay2, bx1, by1, bx2, by2, ...]
+ * Returns: intersection points [x, y, seg_idx_a, seg_idx_b, ...]
+ * @param {Float64Array} segments
+ * @returns {Float64Array}
+ */
+export function batch_segment_intersections(segments) {
+    const ptr0 = passArrayF64ToWasm0(segments, wasm.__wbindgen_malloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.batch_segment_intersections(ptr0, len0);
+    var v2 = getArrayF64FromWasm0(ret[0], ret[1]).slice();
+    wasm.__wbindgen_free(ret[0], ret[1] * 8, 8);
+    return v2;
+}
+
+/**
+ * Closest point on segment to a given point
+ * Returns [x, y] of closest point
+ * @param {number} px
+ * @param {number} py
+ * @param {number} ax
+ * @param {number} ay
+ * @param {number} bx
+ * @param {number} by
+ * @returns {Float64Array}
+ */
+export function closest_point_on_segment(px, py, ax, ay, bx, by) {
+    const ret = wasm.closest_point_on_segment(px, py, ax, ay, bx, by);
+    var v1 = getArrayF64FromWasm0(ret[0], ret[1]).slice();
+    wasm.__wbindgen_free(ret[0], ret[1] * 8, 8);
+    return v1;
+}
+
+/**
+ * Deduplicate segments - removes exact duplicates (including reversed)
+ * Input: flat array [ax1, ay1, ax2, ay2, bx1, by1, bx2, by2, ...]
+ * Returns: deduplicated segments in same format
+ * @param {Float64Array} segments
+ * @returns {Float64Array}
+ */
+export function dedupe_segments(segments) {
+    const ptr0 = passArrayF64ToWasm0(segments, wasm.__wbindgen_malloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.dedupe_segments(ptr0, len0);
+    var v2 = getArrayF64FromWasm0(ret[0], ret[1]).slice();
+    wasm.__wbindgen_free(ret[0], ret[1] * 8, 8);
+    return v2;
+}
+
+/**
  * Quick difference of two polygons (a - b).
  * @param {Float64Array} poly_a
  * @param {Float64Array} poly_b
@@ -219,10 +269,213 @@ export function difference_polygons(poly_a, poly_b) {
 }
 
 /**
+ * Distance between two points
+ * @param {number} x1
+ * @param {number} y1
+ * @param {number} x2
+ * @param {number} y2
+ * @returns {number}
+ */
+export function distance_between(x1, y1, x2, y2) {
+    const ret = wasm.distance_between(x1, y1, x2, y2);
+    return ret;
+}
+
+/**
+ * Distance from point to segment
+ * @param {number} px
+ * @param {number} py
+ * @param {number} ax
+ * @param {number} ay
+ * @param {number} bx
+ * @param {number} by
+ * @returns {number}
+ */
+export function distance_point_segment(px, py, ax, ay, bx, by) {
+    const ret = wasm.distance_point_segment(px, py, ax, ay, bx, by);
+    return ret;
+}
+
+/**
  * Initialize panic hook for better error messages in browser console
  */
 export function init() {
     wasm.init();
+}
+
+/**
+ * Merge colinear overlapping segments
+ * Input: flat array [ax1, ay1, ax2, ay2, ...]
+ * Returns: merged segments
+ * @param {Float64Array} segments
+ * @returns {Float64Array}
+ */
+export function merge_colinear_segments(segments) {
+    const ptr0 = passArrayF64ToWasm0(segments, wasm.__wbindgen_malloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.merge_colinear_segments(ptr0, len0);
+    var v2 = getArrayF64FromWasm0(ret[0], ret[1]).slice();
+    wasm.__wbindgen_free(ret[0], ret[1] * 8, 8);
+    return v2;
+}
+
+/**
+ * Combined optimization: dedupe, merge colinear, trim small
+ * @param {Float64Array} segments
+ * @param {boolean} trim_small
+ * @param {number} small_dist
+ * @param {boolean} merge_colinear
+ * @returns {Float64Array}
+ */
+export function optimize_segments(segments, trim_small, small_dist, merge_colinear) {
+    const ptr0 = passArrayF64ToWasm0(segments, wasm.__wbindgen_malloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.optimize_segments(ptr0, len0, trim_small, small_dist, merge_colinear);
+    var v2 = getArrayF64FromWasm0(ret[0], ret[1]).slice();
+    wasm.__wbindgen_free(ret[0], ret[1] * 8, 8);
+    return v2;
+}
+
+/**
+ * Point in triangle test using barycentric coordinates
+ * Returns true if point (px, py) is inside triangle (ax,ay)-(bx,by)-(cx,cy)
+ * @param {number} px
+ * @param {number} py
+ * @param {number} ax
+ * @param {number} ay
+ * @param {number} bx
+ * @param {number} by
+ * @param {number} cx
+ * @param {number} cy
+ * @returns {boolean}
+ */
+export function point_in_triangle(px, py, ax, ay, bx, by, cx, cy) {
+    const ret = wasm.point_in_triangle(px, py, ax, ay, bx, by, cx, cy);
+    return ret !== 0;
+}
+
+/**
+ * Compute polygon area (signed - positive = clockwise)
+ * Points as flat array: [x1, y1, x2, y2, ...]
+ * @param {Float64Array} points
+ * @returns {number}
+ */
+export function polygon_area(points) {
+    const ptr0 = passArrayF64ToWasm0(points, wasm.__wbindgen_malloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.polygon_area(ptr0, len0);
+    return ret;
+}
+
+/**
+ * Check if polygon is clockwise (area > 0)
+ * @param {Float64Array} points
+ * @returns {boolean}
+ */
+export function polygon_is_clockwise(points) {
+    const ptr0 = passArrayF64ToWasm0(points, wasm.__wbindgen_malloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.polygon_is_clockwise(ptr0, len0);
+    return ret !== 0;
+}
+
+/**
+ * Segment-segment intersection test
+ * Returns intersection point [x, y, t1, t2] or empty if no intersection
+ * t1 and t2 are parametric positions on each segment (0-1)
+ * @param {number} ax1
+ * @param {number} ay1
+ * @param {number} ax2
+ * @param {number} ay2
+ * @param {number} bx1
+ * @param {number} by1
+ * @param {number} bx2
+ * @param {number} by2
+ * @returns {Float64Array}
+ */
+export function segment_intersect(ax1, ay1, ax2, ay2, bx1, by1, bx2, by2) {
+    const ret = wasm.segment_intersect(ax1, ay1, ax2, ay2, bx1, by1, bx2, by2);
+    var v1 = getArrayF64FromWasm0(ret[0], ret[1]).slice();
+    wasm.__wbindgen_free(ret[0], ret[1] * 8, 8);
+    return v1;
+}
+
+/**
+ * Slice a batch of triangles with a plane normal
+ * Input triangles: [v0x, v0y, v0z, v1x, v1y, v1z, v2x, v2y, v2z, ...] (9 floats per triangle)
+ * Normal: [nx, ny, nz]
+ * Returns: intersection segments [ax, ay, az, bx, by, bz, face_idx, ...] (7 floats per segment)
+ * @param {Float64Array} triangles
+ * @param {Float64Array} normal
+ * @param {number} spacing
+ * @param {number} offset
+ * @returns {Float64Array}
+ */
+export function slice_triangles(triangles, normal, spacing, offset) {
+    const ptr0 = passArrayF64ToWasm0(triangles, wasm.__wbindgen_malloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ptr1 = passArrayF64ToWasm0(normal, wasm.__wbindgen_malloc);
+    const len1 = WASM_VECTOR_LEN;
+    const ret = wasm.slice_triangles(ptr0, len0, ptr1, len1, spacing, offset);
+    var v3 = getArrayF64FromWasm0(ret[0], ret[1]).slice();
+    wasm.__wbindgen_free(ret[0], ret[1] * 8, 8);
+    return v3;
+}
+
+/**
+ * Split edges at all intersection points
+ * Input: segments as flat array [ax1, ay1, ax2, ay2, ...]
+ * Returns: split segments in same format, plus T-junction flags
+ * @param {Float64Array} segments
+ * @returns {Float64Array}
+ */
+export function split_edges_at_intersections(segments) {
+    const ptr0 = passArrayF64ToWasm0(segments, wasm.__wbindgen_malloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.split_edges_at_intersections(ptr0, len0);
+    var v2 = getArrayF64FromWasm0(ret[0], ret[1]).slice();
+    wasm.__wbindgen_free(ret[0], ret[1] * 8, 8);
+    return v2;
+}
+
+/**
+ * Test edge visibility using point-in-triangle + depth comparison
+ * Edges: [ax, ay, ax3d_depth, bx, by, bx3d_depth, ...] (6 floats per edge)
+ * Faces: [ax, ay, a_depth, bx, by, b_depth, cx, cy, c_depth, mesh_id, face_id, ...] (11 floats per face)
+ * Returns: indices of visible edges
+ * @param {Float64Array} edges
+ * @param {Float64Array} faces
+ * @param {Float64Array} edge_mesh_face
+ * @returns {Float64Array}
+ */
+export function test_occlusion_math(edges, faces, edge_mesh_face) {
+    const ptr0 = passArrayF64ToWasm0(edges, wasm.__wbindgen_malloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ptr1 = passArrayF64ToWasm0(faces, wasm.__wbindgen_malloc);
+    const len1 = WASM_VECTOR_LEN;
+    const ptr2 = passArrayF64ToWasm0(edge_mesh_face, wasm.__wbindgen_malloc);
+    const len2 = WASM_VECTOR_LEN;
+    const ret = wasm.test_occlusion_math(ptr0, len0, ptr1, len1, ptr2, len2);
+    var v4 = getArrayF64FromWasm0(ret[0], ret[1]).slice();
+    wasm.__wbindgen_free(ret[0], ret[1] * 8, 8);
+    return v4;
+}
+
+/**
+ * Trim small segments - removes segments shorter than threshold
+ * Input: flat array [ax1, ay1, ax2, ay2, ...]
+ * Returns: filtered segments
+ * @param {Float64Array} segments
+ * @param {number} min_length
+ * @returns {Float64Array}
+ */
+export function trim_small_segments(segments, min_length) {
+    const ptr0 = passArrayF64ToWasm0(segments, wasm.__wbindgen_malloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.trim_small_segments(ptr0, len0, min_length);
+    var v2 = getArrayF64FromWasm0(ret[0], ret[1]).slice();
+    wasm.__wbindgen_free(ret[0], ret[1] * 8, 8);
+    return v2;
 }
 
 /**

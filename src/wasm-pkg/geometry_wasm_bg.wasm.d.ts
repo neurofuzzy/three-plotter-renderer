@@ -2,6 +2,7 @@
 /* eslint-disable */
 export const memory: WebAssembly.Memory;
 export const __wbg_booleanprocessor_free: (a: number, b: number) => void;
+export const batch_segment_intersections: (a: number, b: number) => [number, number];
 export const booleanprocessor_add_clip: (a: number, b: number, c: number) => void;
 export const booleanprocessor_add_subject: (a: number, b: number, c: number) => void;
 export const booleanprocessor_clear: (a: number) => void;
@@ -10,7 +11,21 @@ export const booleanprocessor_compute_difference: (a: number) => [number, number
 export const booleanprocessor_compute_union: (a: number) => [number, number];
 export const booleanprocessor_new: () => number;
 export const booleanprocessor_subject_count: (a: number) => number;
+export const closest_point_on_segment: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number];
+export const dedupe_segments: (a: number, b: number) => [number, number];
 export const difference_polygons: (a: number, b: number, c: number, d: number) => [number, number];
+export const distance_between: (a: number, b: number, c: number, d: number) => number;
+export const distance_point_segment: (a: number, b: number, c: number, d: number, e: number, f: number) => number;
+export const merge_colinear_segments: (a: number, b: number) => [number, number];
+export const optimize_segments: (a: number, b: number, c: number, d: number, e: number) => [number, number];
+export const point_in_triangle: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => number;
+export const polygon_area: (a: number, b: number) => number;
+export const polygon_is_clockwise: (a: number, b: number) => number;
+export const segment_intersect: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => [number, number];
+export const slice_triangles: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number];
+export const split_edges_at_intersections: (a: number, b: number) => [number, number];
+export const test_occlusion_math: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number];
+export const trim_small_segments: (a: number, b: number, c: number) => [number, number];
 export const union_polygons: (a: number, b: number, c: number, d: number) => [number, number];
 export const init: () => void;
 export const __wbindgen_free: (a: number, b: number, c: number) => void;

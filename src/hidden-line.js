@@ -4,9 +4,15 @@
  * 
  * A faster alternative to clipper-based boolean operations.
  * Uses spatial hashing and per-edge occlusion testing.
+ * WASM-accelerated when available.
  */
 
 import { Optimize } from './optimize.js';
+import {
+    isWasmReady,
+    splitEdgesAtIntersections as wasmSplitEdges,
+    testOcclusionMath as wasmTestOcclusion
+} from './wasm-geometry.js';
 
 import {
     Vector3,
@@ -1118,15 +1124,112 @@ export function filterSmoothSplitEdges(edges, projectedFaces, coplanarThreshold 
 /**
  * Test edge visibility using pure math (point-in-triangle + depth)
  * No GPU, no raycasting - fully mathematical
+ * WASM-accelerated when available
  * @param {Edge2D[]} edges 
  * @param {Object[]} projectedFaces - Array of {a2d, b2d, c2d, depthA, depthB, depthC, mesh, faceIdx}
  * @param {Camera} camera
  * @returns {Edge2D[]}
  */
 export function testOcclusionMath(edges, projectedFaces, camera) {
-    const visibleEdges = [];
     const cameraPos = camera.position;
 
+    // Try WASM-accelerated path
+    if (isWasmReady() && edges.length > 0 && projectedFaces.length > 0) {
+        try {
+            return testOcclusionMathWASM(edges, projectedFaces, cameraPos);
+        } catch (e) {
+            console.warn('[hidden-line] WASM occlusion failed, falling back to JS:', e);
+        }
+    }
+
+    // JS fallback
+    return testOcclusionMathJS(edges, projectedFaces, cameraPos);
+}
+
+/**
+ * WASM-accelerated occlusion test
+ * Converts Edge2D/Face arrays to flat Float64Arrays for WASM processing
+ */
+function testOcclusionMathWASM(edges, projectedFaces, cameraPos) {
+    // Build mesh ID map for parent-face exclusion
+    const meshIdMap = new Map();
+    let meshCounter = 0;
+
+    // Convert edges to flat array: [ax, ay, a_depth, bx, by, b_depth, ...]
+    const edgeData = new Array(edges.length * 6);
+    const edgeMeshFaceData = new Array(edges.length * 2);
+
+    for (let i = 0; i < edges.length; i++) {
+        const edge = edges[i];
+        const aDepth = cameraPos.distanceTo(edge.a3d);
+        const bDepth = cameraPos.distanceTo(edge.b3d);
+
+        edgeData[i * 6] = edge.a.x;
+        edgeData[i * 6 + 1] = edge.a.y;
+        edgeData[i * 6 + 2] = aDepth;
+        edgeData[i * 6 + 3] = edge.b.x;
+        edgeData[i * 6 + 4] = edge.b.y;
+        edgeData[i * 6 + 5] = bDepth;
+
+        // Get mesh ID
+        if (!meshIdMap.has(edge.mesh)) {
+            meshIdMap.set(edge.mesh, meshCounter++);
+        }
+        edgeMeshFaceData[i * 2] = meshIdMap.get(edge.mesh);
+        edgeMeshFaceData[i * 2 + 1] = edge.faceIdx ?? -1;
+    }
+
+    // Convert faces to flat array: [ax, ay, a_depth, bx, by, b_depth, cx, cy, c_depth, mesh_id, face_id, ...]
+    const faceData = new Array(projectedFaces.length * 11);
+
+    for (let i = 0; i < projectedFaces.length; i++) {
+        const face = projectedFaces[i];
+
+        if (!meshIdMap.has(face.mesh)) {
+            meshIdMap.set(face.mesh, meshCounter++);
+        }
+
+        faceData[i * 11] = face.a2d.x;
+        faceData[i * 11 + 1] = face.a2d.y;
+        faceData[i * 11 + 2] = face.depthA;
+        faceData[i * 11 + 3] = face.b2d.x;
+        faceData[i * 11 + 4] = face.b2d.y;
+        faceData[i * 11 + 5] = face.depthB;
+        faceData[i * 11 + 6] = face.c2d.x;
+        faceData[i * 11 + 7] = face.c2d.y;
+        faceData[i * 11 + 8] = face.depthC;
+        faceData[i * 11 + 9] = meshIdMap.get(face.mesh);
+        faceData[i * 11 + 10] = face.faceIdx;
+    }
+
+    // Call WASM
+    const visibleIndices = wasmTestOcclusion(edgeData, faceData, edgeMeshFaceData);
+
+    // Map results back to Edge2D objects
+    const visibleEdges = [];
+    for (const idx of visibleIndices) {
+        const edge = edges[idx];
+        edge.visible = true;
+        visibleEdges.push(edge);
+    }
+
+    // Mark non-visible edges
+    const visibleSet = new Set(visibleIndices);
+    for (let i = 0; i < edges.length; i++) {
+        if (!visibleSet.has(i)) {
+            edges[i].visible = false;
+        }
+    }
+
+    console.log(`[WASM] Occlusion: ${visibleEdges.length}/${edges.length} visible`);
+    return visibleEdges;
+}
+
+/**
+ * JS fallback for occlusion testing
+ */
+function testOcclusionMathJS(edges, projectedFaces, cameraPos) {
+    const visibleEdges = [];
     let debugHitCount = 0;
     let debugOccludedCount = 0;
 
@@ -1179,7 +1282,7 @@ export function testOcclusionMath(edges, projectedFaces, camera) {
         }
     }
 
-    console.log(`Occlusion debug: ${debugHitCount} point-in-triangle hits, ${debugOccludedCount} occluded`);
+    console.log(`[JS] Occlusion debug: ${debugHitCount} point-in-triangle hits, ${debugOccludedCount} occluded`);
     return visibleEdges;
 }
 

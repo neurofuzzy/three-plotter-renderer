@@ -42,14 +42,110 @@ export class BooleanProcessor {
 }
 
 /**
+ * Batch segment-segment intersection for array of segments
+ * Input: segments as flat array [ax1, ay1, ax2, ay2, bx1, by1, bx2, by2, ...]
+ * Returns: intersection points [x, y, seg_idx_a, seg_idx_b, ...]
+ */
+export function batch_segment_intersections(segments: Float64Array): Float64Array;
+
+/**
+ * Closest point on segment to a given point
+ * Returns [x, y] of closest point
+ */
+export function closest_point_on_segment(px: number, py: number, ax: number, ay: number, bx: number, by: number): Float64Array;
+
+/**
+ * Deduplicate segments - removes exact duplicates (including reversed)
+ * Input: flat array [ax1, ay1, ax2, ay2, bx1, by1, bx2, by2, ...]
+ * Returns: deduplicated segments in same format
+ */
+export function dedupe_segments(segments: Float64Array): Float64Array;
+
+/**
  * Quick difference of two polygons (a - b).
  */
 export function difference_polygons(poly_a: Float64Array, poly_b: Float64Array): Float64Array;
 
 /**
+ * Distance between two points
+ */
+export function distance_between(x1: number, y1: number, x2: number, y2: number): number;
+
+/**
+ * Distance from point to segment
+ */
+export function distance_point_segment(px: number, py: number, ax: number, ay: number, bx: number, by: number): number;
+
+/**
  * Initialize panic hook for better error messages in browser console
  */
 export function init(): void;
+
+/**
+ * Merge colinear overlapping segments
+ * Input: flat array [ax1, ay1, ax2, ay2, ...]
+ * Returns: merged segments
+ */
+export function merge_colinear_segments(segments: Float64Array): Float64Array;
+
+/**
+ * Combined optimization: dedupe, merge colinear, trim small
+ */
+export function optimize_segments(segments: Float64Array, trim_small: boolean, small_dist: number, merge_colinear: boolean): Float64Array;
+
+/**
+ * Point in triangle test using barycentric coordinates
+ * Returns true if point (px, py) is inside triangle (ax,ay)-(bx,by)-(cx,cy)
+ */
+export function point_in_triangle(px: number, py: number, ax: number, ay: number, bx: number, by: number, cx: number, cy: number): boolean;
+
+/**
+ * Compute polygon area (signed - positive = clockwise)
+ * Points as flat array: [x1, y1, x2, y2, ...]
+ */
+export function polygon_area(points: Float64Array): number;
+
+/**
+ * Check if polygon is clockwise (area > 0)
+ */
+export function polygon_is_clockwise(points: Float64Array): boolean;
+
+/**
+ * Segment-segment intersection test
+ * Returns intersection point [x, y, t1, t2] or empty if no intersection
+ * t1 and t2 are parametric positions on each segment (0-1)
+ */
+export function segment_intersect(ax1: number, ay1: number, ax2: number, ay2: number, bx1: number, by1: number, bx2: number, by2: number): Float64Array;
+
+/**
+ * Slice a batch of triangles with a plane normal
+ * Input triangles: [v0x, v0y, v0z, v1x, v1y, v1z, v2x, v2y, v2z, ...] (9 floats per triangle)
+ * Normal: [nx, ny, nz]
+ * Returns: intersection segments [ax, ay, az, bx, by, bz, face_idx, ...] (7 floats per segment)
+ */
+export function slice_triangles(triangles: Float64Array, normal: Float64Array, spacing: number, offset: number): Float64Array;
+
+/**
+ * Split edges at all intersection points
+ * Input: segments as flat array [ax1, ay1, ax2, ay2, ...]
+ * Returns: split segments in same format, plus T-junction flags
+ */
+export function split_edges_at_intersections(segments: Float64Array): Float64Array;
+
+/**
+ * Test edge visibility using point-in-triangle + depth comparison
+ * Edges: [ax, ay, ax3d_depth, bx, by, bx3d_depth, ...] (6 floats per edge)
+ * Faces: [ax, ay, a_depth, bx, by, b_depth, cx, cy, c_depth, mesh_id, face_id, ...] (11 floats per face)
+ * Returns: indices of visible edges
+ */
+export function test_occlusion_math(edges: Float64Array, faces: Float64Array, edge_mesh_face: Float64Array): Float64Array;
+
+/**
+ * Trim small segments - removes segments shorter than threshold
+ * Input: flat array [ax1, ay1, ax2, ay2, ...]
+ * Returns: filtered segments
+ */
+export function trim_small_segments(segments: Float64Array, min_length: number): Float64Array;
 
 /**
  * Quick union of two polygons.
@@ -63,6 +159,7 @@ export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembl
 export interface InitOutput {
   readonly memory: WebAssembly.Memory;
   readonly __wbg_booleanprocessor_free: (a: number, b: number) => void;
+  readonly batch_segment_intersections: (a: number, b: number) => [number, number];
   readonly booleanprocessor_add_clip: (a: number, b: number, c: number) => void;
   readonly booleanprocessor_add_subject: (a: number, b: number, c: number) => void;
   readonly booleanprocessor_clear: (a: number) => void;
@@ -71,7 +168,21 @@ export interface InitOutput {
   readonly booleanprocessor_compute_union: (a: number) => [number, number];
   readonly booleanprocessor_new: () => number;
   readonly booleanprocessor_subject_count: (a: number) => number;
+  readonly closest_point_on_segment: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number];
+  readonly dedupe_segments: (a: number, b: number) => [number, number];
   readonly difference_polygons: (a: number, b: number, c: number, d: number) => [number, number];
+  readonly distance_between: (a: number, b: number, c: number, d: number) => number;
+  readonly distance_point_segment: (a: number, b: number, c: number, d: number, e: number, f: number) => number;
+  readonly merge_colinear_segments: (a: number, b: number) => [number, number];
+  readonly optimize_segments: (a: number, b: number, c: number, d: number, e: number) => [number, number];
+  readonly point_in_triangle: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => number;
+  readonly polygon_area: (a: number, b: number) => number;
+  readonly polygon_is_clockwise: (a: number, b: number) => number;
+  readonly segment_intersect: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => [number, number];
+  readonly slice_triangles: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number];
+  readonly split_edges_at_intersections: (a: number, b: number) => [number, number];
+  readonly test_occlusion_math: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number];
+  readonly trim_small_segments: (a: number, b: number, c: number) => [number, number];
   readonly union_polygons: (a: number, b: number, c: number, d: number) => [number, number];
   readonly init: () => void;
   readonly __wbindgen_free: (a: number, b: number, c: number) => void;
