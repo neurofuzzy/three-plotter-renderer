@@ -1157,7 +1157,8 @@ function testOcclusionMathWASM(edges, projectedFaces, cameraPos) {
 
     // Convert edges to flat array: [ax, ay, a_depth, bx, by, b_depth, ...]
     const edgeData = new Array(edges.length * 6);
-    const edgeMeshFaceData = new Array(edges.length * 2);
+    // Edge-to-face mapping: [mesh_id, face_id, face_id2, ...] (3 values per edge)
+    const edgeMeshFaceData = new Array(edges.length * 3);
 
     for (let i = 0; i < edges.length; i++) {
         const edge = edges[i];
@@ -1175,8 +1176,9 @@ function testOcclusionMathWASM(edges, projectedFaces, cameraPos) {
         if (!meshIdMap.has(edge.mesh)) {
             meshIdMap.set(edge.mesh, meshCounter++);
         }
-        edgeMeshFaceData[i * 2] = meshIdMap.get(edge.mesh);
-        edgeMeshFaceData[i * 2 + 1] = edge.faceIdx ?? -1;
+        edgeMeshFaceData[i * 3] = meshIdMap.get(edge.mesh);
+        edgeMeshFaceData[i * 3 + 1] = edge.faceIdx ?? -1;
+        edgeMeshFaceData[i * 3 + 2] = edge.faceIdx2 ?? -1;  // Include second face!
     }
 
     // Convert faces to flat array: [ax, ay, a_depth, bx, by, b_depth, cx, cy, c_depth, mesh_id, face_id, ...]

@@ -704,14 +704,19 @@ pub fn test_occlusion_math(edges: &[f64], faces: &[f64], edge_mesh_face: &[f64])
         let mid_y = (ay + by) / 2.0;
         let edge_depth = (a_depth + b_depth) / 2.0;
         
-        // Get edge's mesh and face IDs
-        let edge_mesh_id = if i * 2 + 1 < edge_mesh_face.len() {
-            edge_mesh_face[i * 2] as i32
+        // Get edge's mesh and face IDs (3 values per edge: mesh_id, face_id, face_id2)
+        let edge_mesh_id = if i * 3 + 2 < edge_mesh_face.len() {
+            edge_mesh_face[i * 3] as i32
         } else {
             -1
         };
-        let edge_face_id = if i * 2 + 1 < edge_mesh_face.len() {
-            edge_mesh_face[i * 2 + 1] as i32
+        let edge_face_id = if i * 3 + 2 < edge_mesh_face.len() {
+            edge_mesh_face[i * 3 + 1] as i32
+        } else {
+            -1
+        };
+        let edge_face_id2 = if i * 3 + 2 < edge_mesh_face.len() {
+            edge_mesh_face[i * 3 + 2] as i32
         } else {
             -1
         };
@@ -731,8 +736,9 @@ pub fn test_occlusion_math(edges: &[f64], faces: &[f64], edge_mesh_face: &[f64])
             let face_mesh_id = faces[j * 11 + 9] as i32;
             let face_face_id = faces[j * 11 + 10] as i32;
             
-            // Skip if this is the edge's parent face
-            if edge_mesh_id == face_mesh_id && edge_face_id == face_face_id {
+            // Skip if this is one of the edge's parent faces (check both)
+            if edge_mesh_id == face_mesh_id && 
+               (edge_face_id == face_face_id || edge_face_id2 == face_face_id) {
                 continue;
             }
             

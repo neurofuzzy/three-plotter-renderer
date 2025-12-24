@@ -37,7 +37,27 @@ export async function initWasm() {
  * @returns {boolean}
  */
 export function isWasmReady() {
-    return wasmReady;
+    return wasmReady && wasmEnabled;
+}
+
+// Allow runtime enable/disable of WASM (for debugging/comparison)
+let wasmEnabled = true;
+
+/**
+ * Enable or disable WASM acceleration
+ * @param {boolean} enabled
+ */
+export function setWasmEnabled(enabled) {
+    wasmEnabled = enabled;
+    console.log(`[geometry-wasm] WASM ${enabled ? 'enabled' : 'disabled'}`);
+}
+
+/**
+ * Get current WASM enabled state
+ * @returns {boolean}
+ */
+export function getWasmEnabled() {
+    return wasmEnabled;
 }
 
 /**

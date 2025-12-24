@@ -132,6 +132,11 @@
             </div>
             <button id="renderBtn">Render Hidden Lines</button>
             <button id="exportBtn">Export SVG</button>
+            <label
+                style="display: flex; align-items: center; gap: 6px; margin-left: 10px; border-left: 1px solid var(--border); padding-left: 10px; cursor: pointer;">
+                <input type="checkbox" id="wasmToggle" checked style="width: 16px; height: 16px; cursor: pointer;">
+                <span title="Use WASM-accelerated occlusion testing">WASM</span>
+            </label>
         </div>
         <div id="stats">Use mouse to orbit, scroll to zoom</div>
     </div>
@@ -142,6 +147,7 @@
         import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js';
         import { computeHiddenLinesMultiple, findAdjacentFaces } from '../src/hidden-line.js';
         import { Slicer } from '../src/slicer.js';
+        import { setWasmEnabled, getWasmEnabled, isWasmReady } from '../src/wasm-geometry.js';
 
         let scene, camera, renderer, controls, mesh;
 
@@ -182,8 +188,10 @@
                 loadModel(e.target.value);
             });
 
-
-
+            // WASM toggle
+            document.getElementById('wasmToggle').addEventListener('change', (e) => {
+                setWasmEnabled(e.target.checked);
+            });
             // Load default model
             loadModel(document.getElementById('modelSelect').value);
 
