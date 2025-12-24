@@ -1058,18 +1058,23 @@ impl HiddenLineProcessor {
     /// where type is 0=silhouette, 1=crease, 2=hatch
     #[wasm_bindgen]
     pub fn compute(&self) -> Vec<f32> {
+        use web_sys::console;
+        
         if self.vertices.is_empty() || self.indices.is_empty() {
             return Vec::new();
         }
         
         // Step 1: Project all vertices to 2D
         let projected = self.project_vertices();
+        console::log_1(&format!("WASM Step 1: {} vertices projected", projected.len()).into());
         
         // Step 2: Extract edges with adjacency info
         let edges = self.extract_edges();
+        console::log_1(&format!("WASM Step 2: {} raw edges extracted", edges.len()).into());
         
         // Step 3: Classify edges (silhouette, crease, interior)
         let classified = self.classify_edges(&edges, &projected);
+        console::log_1(&format!("WASM Step 3: {} edges after classification (interior filtered)", classified.len()).into());
         
         // Step 4: Build spatial hash for O(1) neighbor lookup
         let hash = SpatialHash::new(&classified, 50.0);
@@ -1084,12 +1089,15 @@ impl HiddenLineProcessor {
         
         // Step 7: Find intersections and split edges
         let split_edges = self.split_at_intersections(&all_edges, &hash);
+        console::log_1(&format!("WASM Step 7: {} edges after splitting", split_edges.len()).into());
         
         // Step 7.5: Filter out coplanar straggler edges
         let filtered_edges = self.filter_coplanar_stragglers(&split_edges, &projected);
+        console::log_1(&format!("WASM Step 7.5: {} edges after straggler filter", filtered_edges.len()).into());
         
         // Step 8: Test occlusion for each edge
         let visible = self.test_occlusion(&filtered_edges, &projected);
+        console::log_1(&format!("WASM Step 8: {} visible edge values (5 per edge)", visible.len()).into());
         
         // Step 9: Output visible edges
         visible
@@ -1097,10 +1105,15 @@ impl HiddenLineProcessor {
     
     /// Filter out edges that lie between coplanar faces (straggler edges)
     fn filter_coplanar_stragglers(&self, edges: &[ClassifiedEdge], projected: &[[f32; 3]]) -> Vec<ClassifiedEdge> {
+        use web_sys::console;
+        
         let num_tris = self.indices.len() / 3;
         let mut result = Vec::new();
         let coplanar_threshold = 0.99_f32;
         let distance_threshold = 0.5_f32;
+        let mut removed_count = 0;
+        let mut edges_with_2plus_faces = 0;
+        let mut edges_with_0_or_1_faces = 0;
         
         for edge in edges {
             // Find all faces that this edge lies along (geometrically)
@@ -1147,6 +1160,7 @@ impl HiddenLineProcessor {
             // Check if all adjacent faces are coplanar
             let mut should_remove = false;
             if adjacent_faces.len() >= 2 {
+                edges_with_2plus_faces += 1;
                 let n0 = self.face_normal(adjacent_faces[0]);
                 let c0 = self.face_plane_constant(adjacent_faces[0]);
                 let mut all_coplanar = true;
@@ -1174,13 +1188,22 @@ impl HiddenLineProcessor {
                 
                 if all_coplanar {
                     should_remove = true;
+                    removed_count += 1;
                 }
+            } else {
+                edges_with_0_or_1_faces += 1;
             }
             
             if !should_remove {
                 result.push(edge.clone());
             }
         }
+        
+        // Log summary to browser console
+        console::log_1(&format!(
+            "WASM straggler filter: {} edges, {} with 2+ adj faces, {} with 0-1 faces, {} removed",
+            edges.len(), edges_with_2plus_faces, edges_with_0_or_1_faces, removed_count
+        ).into());
         
         result
     }
@@ -1574,7 +1597,7 @@ impl HiddenLineProcessor {
         }
     }
     
-    /// Split edges at intersections with other edges
+    /// Split edges at intersections with other edges (including T-junctions)
     fn split_at_intersections(&self, edges: &[ClassifiedEdge], _hash: &SpatialHash) -> Vec<ClassifiedEdge> {
         let mut result = Vec::with_capacity(edges.len() * 2);
         
@@ -1586,7 +1609,7 @@ impl HiddenLineProcessor {
             for (j, other) in edges.iter().enumerate() {
                 if i == j { continue; }
                 
-                // 2D line-line intersection
+                // 1. Check for crossing intersection
                 if let Some((t, _u)) = Self::segment_intersection_2d(
                     edge.x1, edge.y1, edge.x2, edge.y2,
                     other.x1, other.y1, other.x2, other.y2,
@@ -1595,6 +1618,21 @@ impl HiddenLineProcessor {
                     if t > 0.001 && t < 0.999 {
                         t_values.push(t);
                     }
+                }
+                
+                // 2. Check for T-junctions: other's endpoints on this edge's interior
+                // This detects when another edge ends/starts in the middle of this edge
+                if let Some(t) = Self::point_on_edge_interior(
+                    other.x1, other.y1,
+                    edge.x1, edge.y1, edge.x2, edge.y2
+                ) {
+                    t_values.push(t);
+                }
+                if let Some(t) = Self::point_on_edge_interior(
+                    other.x2, other.y2,
+                    edge.x1, edge.y1, edge.x2, edge.y2
+                ) {
+                    t_values.push(t);
                 }
             }
             
@@ -1631,6 +1669,34 @@ impl HiddenLineProcessor {
         }
         
         result
+    }
+    
+    /// Check if point (px,py) lies on edge interior (not endpoints)
+    /// Returns Some(t) parameter if on edge interior, None otherwise
+    fn point_on_edge_interior(px: f32, py: f32, ex1: f32, ey1: f32, ex2: f32, ey2: f32) -> Option<f32> {
+        let dx = ex2 - ex1;
+        let dy = ey2 - ey1;
+        let len_sq = dx * dx + dy * dy;
+        if len_sq < 1e-10 { return None; } // Degenerate edge
+        
+        // Project point onto edge line
+        let t = ((px - ex1) * dx + (py - ey1) * dy) / len_sq;
+        
+        // Check if t is in interior (not at endpoints) - matches JS eps = 0.01
+        if t <= 0.01 || t >= 0.99 { return None; }
+        
+        // Check distance from point to projected point on line
+        let proj_x = ex1 + t * dx;
+        let proj_y = ey1 + t * dy;
+        let dist_sq = (px - proj_x) * (px - proj_x) + (py - proj_y) * (py - proj_y);
+        
+        // 1 pixel tolerance, scaled by INTERNAL_SCALE (matches JS distSq < 1.0)
+        let tolerance = 1.0 * INTERNAL_SCALE;
+        if dist_sq < tolerance * tolerance {
+            Some(t)
+        } else {
+            None
+        }
     }
     
     /// Find 2D segment-segment intersection, returns (t, u) parameters
