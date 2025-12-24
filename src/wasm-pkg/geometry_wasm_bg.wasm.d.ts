@@ -22,6 +22,7 @@ export const hiddenlineprocessor_new: () => number;
 export const hiddenlineprocessor_set_camera: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => void;
 export const hiddenlineprocessor_set_crease_threshold: (a: number, b: number) => void;
 export const hiddenlineprocessor_set_geometry: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => void;
+export const hiddenlineprocessor_set_hatch_config: (a: number, b: number, c: number, d: number) => void;
 export const merge_colinear_segments: (a: number, b: number) => [number, number];
 export const optimize_segments: (a: number, b: number, c: number, d: number, e: number) => [number, number];
 export const point_in_triangle: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => number;

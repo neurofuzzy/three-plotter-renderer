@@ -439,16 +439,25 @@ class HiddenLineProcessorWrapper {
     }
 
     /**
-     * Compute visible edges
-     * @returns {{x1: number, y1: number, x2: number, y2: number, type: 'silhouette' | 'crease' | 'hatch'}[]}
+     * Configure hatch generation
+     * @param {number[]} normal - [nx, ny, nz] slice plane normal
+     * @param {number} spacing - Distance between hatch lines (world units)
      */
+    setHatchConfig(normal, spacing) {
+        this._processor.set_hatch_config(new Float32Array(normal), spacing);
+    }
+
+    /**
+     * Compute visible edges
+     * @returns {{x1: number, y1: number, x2: number, y2: number, type: 'silhouette' | 'crease' | 'hatch'}[]}\n     */
     compute() {
         const result = this._processor.compute();
         const edges = [];
-        let silCount = 0, creaseCount = 0;
+        let silCount = 0, creaseCount = 0, hatchCount = 0;
         for (let i = 0; i < result.length; i += 5) {
             const typeCode = result[i + 4];
             if (typeCode === 0) silCount++;
+            else if (typeCode === 2) hatchCount++;
             else creaseCount++;
             edges.push({
                 x1: result[i],
@@ -458,7 +467,7 @@ class HiddenLineProcessorWrapper {
                 type: typeCode === 0 ? 'silhouette' : (typeCode === 2 ? 'hatch' : 'crease')
             });
         }
-        console.log(`[WASM] Edges: ${edges.length} (${silCount} silhouette, ${creaseCount} crease)`);
+        console.log(`[WASM] Edges: ${edges.length} (${silCount} silhouette, ${creaseCount} crease, ${hatchCount} hatch)`);
         return edges;
     }
 }

@@ -973,6 +973,10 @@ pub struct HiddenLineProcessor {
     height: f32,
     // Crease angle threshold (dot product)
     crease_threshold: f32,
+    // Hatch line spacing (world units)
+    hatch_spacing: f32,
+    // Hatch plane normal [x, y, z] (direction of slicing planes)
+    hatch_normal: [f32; 3],
 }
 
 #[wasm_bindgen]
@@ -993,8 +997,25 @@ impl HiddenLineProcessor {
             camera_pos: [0.0, 0.0, 10.0],
             width: 800.0,
             height: 600.0,
-            crease_threshold: 0.99, // Match JS smoothThreshold (higher = more aggressive smoothing)
+            crease_threshold: 0.99,
+            hatch_spacing: 0.1,  // Default hatch spacing
+            hatch_normal: [0.0, 1.0, 0.0], // Default: horizontal slices (Y normal)
         }
+    }
+    
+    /// Configure hatch generation
+    /// normal: [nx, ny, nz] - direction of slicing planes
+    /// spacing: distance between hatch lines (world units)
+    #[wasm_bindgen]
+    pub fn set_hatch_config(&mut self, normal: &[f32], spacing: f32) {
+        if normal.len() >= 3 {
+            // Normalize the input normal
+            let len = (normal[0] * normal[0] + normal[1] * normal[1] + normal[2] * normal[2]).sqrt();
+            if len > 0.0001 {
+                self.hatch_normal = [normal[0] / len, normal[1] / len, normal[2] / len];
+            }
+        }
+        self.hatch_spacing = spacing;
     }
     
     /// Set geometry from flat arrays
@@ -1048,14 +1069,148 @@ impl HiddenLineProcessor {
         // Step 4: Build spatial hash for O(1) neighbor lookup
         let hash = SpatialHash::new(&classified, 50.0);
         
-        // Step 5: Find intersections and split edges
-        let split_edges = self.split_at_intersections(&classified, &hash);
+        // Step 5: Generate hatch lines from geometry
+        let hatch_edges = self.generate_hatches(&projected);
         
-        // Step 6: Test occlusion for each edge
+        // Step 6: Combine classified edges with hatches
+        let mut all_edges = classified;
+        all_edges.extend(hatch_edges);
+        
+        // Step 7: Find intersections and split edges
+        let split_edges = self.split_at_intersections(&all_edges, &hash);
+        
+        // Step 8: Test occlusion for each edge
         let visible = self.test_occlusion(&split_edges, &projected);
         
-        // Step 7: Output visible edges
+        // Step 9: Output visible edges
         visible
+    }
+    
+    /// Generate hatch lines by slicing triangles with parallel planes
+    fn generate_hatches(&self, _projected: &[[f32; 3]]) -> Vec<ClassifiedEdge> {
+        let mut hatches = Vec::new();
+        let n = self.hatch_normal;
+        let spacing = self.hatch_spacing;
+        
+        if spacing <= 0.0 {
+            return hatches;
+        }
+        
+        // Process each triangle
+        let num_tris = self.indices.len() / 3;
+        for tri in 0..num_tris {
+            let i0 = self.indices[tri * 3] as usize;
+            let i1 = self.indices[tri * 3 + 1] as usize;
+            let i2 = self.indices[tri * 3 + 2] as usize;
+            
+            // Get 3D vertices
+            let v0 = (self.vertices[i0 * 3], self.vertices[i0 * 3 + 1], self.vertices[i0 * 3 + 2]);
+            let v1 = (self.vertices[i1 * 3], self.vertices[i1 * 3 + 1], self.vertices[i1 * 3 + 2]);
+            let v2 = (self.vertices[i2 * 3], self.vertices[i2 * 3 + 1], self.vertices[i2 * 3 + 2]);
+            
+            // Compute face normal for front-face culling
+            let e1 = (v1.0 - v0.0, v1.1 - v0.1, v1.2 - v0.2);
+            let e2 = (v2.0 - v0.0, v2.1 - v0.1, v2.2 - v0.2);
+            let fn_x = e1.1 * e2.2 - e1.2 * e2.1;
+            let fn_y = e1.2 * e2.0 - e1.0 * e2.2;
+            let fn_z = e1.0 * e2.1 - e1.1 * e2.0;
+            
+            // Check if face is front-facing
+            let center = ((v0.0 + v1.0 + v2.0) / 3.0, (v0.1 + v1.1 + v2.1) / 3.0, (v0.2 + v1.2 + v2.2) / 3.0);
+            let view_dir = (
+                self.camera_pos[0] - center.0,
+                self.camera_pos[1] - center.1,
+                self.camera_pos[2] - center.2,
+            );
+            let dot_view = fn_x * view_dir.0 + fn_y * view_dir.1 + fn_z * view_dir.2;
+            if dot_view <= 0.0 {
+                continue; // Back-facing, skip hatching
+            }
+            
+            // Project vertices onto slice plane normal
+            let d0 = v0.0 * n[0] + v0.1 * n[1] + v0.2 * n[2];
+            let d1 = v1.0 * n[0] + v1.1 * n[1] + v1.2 * n[2];
+            let d2 = v2.0 * n[0] + v2.1 * n[1] + v2.2 * n[2];
+            
+            let min_d = d0.min(d1).min(d2);
+            let max_d = d0.max(d1).max(d2);
+            
+            // Find which slice planes intersect this triangle
+            let start_plane = (min_d / spacing).ceil() as i32;
+            let end_plane = (max_d / spacing).floor() as i32;
+            
+            for plane_idx in start_plane..=end_plane {
+                // Add tiny offset to avoid exactly hitting vertices
+                let plane_d = (plane_idx as f32) * spacing + 0.0001;
+                
+                // Find intersection points of each edge with the plane
+                let mut intersections = Vec::new();
+                
+                // Edge v0-v1
+                Self::edge_plane_intersection(v0, v1, d0, d1, plane_d, &mut intersections);
+                // Edge v1-v2
+                Self::edge_plane_intersection(v1, v2, d1, d2, plane_d, &mut intersections);
+                // Edge v2-v0
+                Self::edge_plane_intersection(v2, v0, d2, d0, plane_d, &mut intersections);
+                
+                if intersections.len() == 2 {
+                    let p0 = &intersections[0];
+                    let p1 = &intersections[1];
+                    
+                    // Project 3D hatch endpoints to 2D
+                    let proj0 = self.project_point(p0.0, p0.1, p0.2);
+                    let proj1 = self.project_point(p1.0, p1.1, p1.2);
+                    
+                    hatches.push(ClassifiedEdge {
+                        x1: proj0.0, y1: proj0.1, depth1: proj0.2,
+                        x2: proj1.0, y2: proj1.1, depth2: proj1.2,
+                        edge_type: EdgeType::Hatch,
+                        face1: tri as u32,
+                        face2: None,
+                        mesh_idx: 0,
+                    });
+                }
+            }
+        }
+        
+        hatches
+    }
+    
+    /// Find intersection of an edge with a plane (d = plane_d)
+    fn edge_plane_intersection(
+        v0: (f32, f32, f32), v1: (f32, f32, f32),
+        d0: f32, d1: f32, plane_d: f32,
+        out: &mut Vec<(f32, f32, f32)>
+    ) {
+        // Check if edge crosses plane
+        if (d0 < plane_d && d1 > plane_d) || (d0 > plane_d && d1 < plane_d) {
+            let t = (plane_d - d0) / (d1 - d0);
+            let px = v0.0 + t * (v1.0 - v0.0);
+            let py = v0.1 + t * (v1.1 - v0.1);
+            let pz = v0.2 + t * (v1.2 - v0.2);
+            out.push((px, py, pz));
+        }
+    }
+    
+    /// Project a single 3D point to 2D screen coordinates with depth
+    fn project_point(&self, x: f32, y: f32, z: f32) -> (f32, f32, f32) {
+        let half_w = self.width / 2.0;
+        let half_h = self.height / 2.0;
+        let m = &self.view_proj;
+        
+        let clip_x = m[0] * x + m[4] * y + m[8] * z + m[12];
+        let clip_y = m[1] * x + m[5] * y + m[9] * z + m[13];
+        let clip_z = m[2] * x + m[6] * y + m[10] * z + m[14];
+        let clip_w = m[3] * x + m[7] * y + m[11] * z + m[15];
+        
+        if clip_w.abs() > 0.0001 {
+            let ndc_x = clip_x / clip_w;
+            let ndc_y = clip_y / clip_w;
+            let ndc_z = clip_z / clip_w;
+            (ndc_x * half_w, -ndc_y * half_h, ndc_z)
+        } else {
+            (0.0, 0.0, 1.0)
+        }
     }
     
     /// Project all 3D vertices to 2D screen coordinates

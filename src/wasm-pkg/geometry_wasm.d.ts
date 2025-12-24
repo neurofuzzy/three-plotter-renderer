@@ -56,6 +56,12 @@ export class HiddenLineProcessor {
    */
   set_geometry(vertices: Float32Array, indices: Uint32Array, mesh_ranges: Uint32Array): void;
   /**
+   * Configure hatch generation
+   * normal: [nx, ny, nz] - direction of slicing planes
+   * spacing: distance between hatch lines (world units)
+   */
+  set_hatch_config(normal: Float32Array, spacing: number): void;
+  /**
    * Set crease angle threshold (as cosine, 0.0 = 90°, 1.0 = 0°)
    */
   set_crease_threshold(threshold: number): void;
@@ -209,6 +215,7 @@ export interface InitOutput {
   readonly hiddenlineprocessor_set_camera: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => void;
   readonly hiddenlineprocessor_set_crease_threshold: (a: number, b: number) => void;
   readonly hiddenlineprocessor_set_geometry: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => void;
+  readonly hiddenlineprocessor_set_hatch_config: (a: number, b: number, c: number, d: number) => void;
   readonly merge_colinear_segments: (a: number, b: number) => [number, number];
   readonly optimize_segments: (a: number, b: number, c: number, d: number, e: number) => [number, number];
   readonly point_in_triangle: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => number;

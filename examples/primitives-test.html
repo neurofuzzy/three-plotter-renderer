@@ -249,6 +249,7 @@
 
                 processor.setMeshes(meshes);
                 processor.setCamera(camera, window.innerWidth, window.innerHeight);
+                processor.setHatchConfig([0, 1, 0], 0.15); // Horizontal slices with 0.15 spacing
 
                 const edges = processor.compute();
 
@@ -269,6 +270,7 @@
 
             let silhouetteD = '';
             let creaseD = '';
+            let hatchD = '';
 
             for (const edge of edges) {
                 const x1 = edge.x1 + halfWidth;
@@ -278,9 +280,21 @@
 
                 if (edge.type === 'silhouette') {
                     silhouetteD += `M${x1},${y1}L${x2},${y2}`;
+                } else if (edge.type === 'hatch') {
+                    hatchD += `M${x1},${y1}L${x2},${y2}`;
                 } else {
                     creaseD += `M${x1},${y1}L${x2},${y2}`;
                 }
+            }
+
+            // Draw hatch lines first (behind edges)
+            if (hatchD) {
+                const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                path.setAttribute('d', hatchD);
+                path.setAttribute('stroke', '#aaaaaa');
+                path.setAttribute('stroke-width', '0.5');
+                path.setAttribute('fill', 'none');
+                svg.appendChild(path);
             }
 
             if (silhouetteD) {
@@ -299,23 +313,6 @@
                 path.setAttribute('stroke-width', '1');
                 path.setAttribute('fill', 'none');
                 svg.appendChild(path);
-            }
-
-            // Debug: draw circles at each edge vertex
-            for (const edge of edges) {
-                const x1 = edge.x1 + halfWidth;
-                const y1 = halfHeight + edge.y1;
-                const x2 = edge.x2 + halfWidth;
-                const y2 = halfHeight + edge.y2;
-
-                for (const [x, y] of [[x1, y1], [x2, y2]]) {
-                    const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-                    circle.setAttribute('cx', x);
-                    circle.setAttribute('cy', y);
-                    circle.setAttribute('r', '3');
-                    circle.setAttribute('fill', edge.type === 'silhouette' ? '#ff0000' : '#0000ff');
-                    svg.appendChild(circle);
-                }
             }
         }
 

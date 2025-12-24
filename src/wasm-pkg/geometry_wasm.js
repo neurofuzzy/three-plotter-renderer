@@ -288,6 +288,18 @@ export class HiddenLineProcessor {
         wasm.hiddenlineprocessor_set_geometry(this.__wbg_ptr, ptr0, len0, ptr1, len1, ptr2, len2);
     }
     /**
+     * Configure hatch generation
+     * normal: [nx, ny, nz] - direction of slicing planes
+     * spacing: distance between hatch lines (world units)
+     * @param {Float32Array} normal
+     * @param {number} spacing
+     */
+    set_hatch_config(normal, spacing) {
+        const ptr0 = passArrayF32ToWasm0(normal, wasm.__wbindgen_malloc);
+        const len0 = WASM_VECTOR_LEN;
+        wasm.hiddenlineprocessor_set_hatch_config(this.__wbg_ptr, ptr0, len0, spacing);
+    }
+    /**
      * Set crease angle threshold (as cosine, 0.0 = 90°, 1.0 = 0°)
      * @param {number} threshold
      */
