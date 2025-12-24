@@ -3,8 +3,7 @@
  * Edge-Based Hidden Line Renderer
  * 
  * A faster alternative to clipper-based boolean operations.
- * Uses spatial hashing and per-edge occlusion testing.
- * WASM-accelerated when available.
+ * Uses per-edge occlusion testing.
  */
 
 import { Optimize } from './optimize.js';
@@ -50,9 +49,31 @@ import {
  * @property {boolean} isProfile - Is this a silhouette edge?
  * @property {boolean} visible - Is this edge visible?
  * @property {number} faceIdx - Parent face index
+ * @property {number} [faceIdx2] - Second face index (if shared edge)
  * @property {Mesh} mesh - Parent mesh
  * @property {boolean} [isHatch] - Is this a hatch line?
  * @property {boolean} [isSilhouette] - Is this a silhouette edge (borders void)?
+ * @property {Vector3} [normal1] - First face normal (propagated)
+ * @property {Vector3} [normal2] - Second face normal (propagated)
+ * @property {number} [adjacentFaceCount] - Number of adjacent faces (debug/filtering)
+ * @property {number} [faceSimilarity] - Similarity of adjacent face normals (debug/filtering)
+ * @property {boolean} [isTJunctionStraggler] - Is this edge a result of a T-junction split?
+ */
+
+
+
+/**
+ * @typedef {Object} ProjectedFace
+ * @property {Vector2} a2d - Screen space vertex A
+ * @property {Vector2} b2d - Screen space vertex B
+ * @property {Vector2} c2d - Screen space vertex C
+ * @property {number} depthA - Depth at vertex A
+ * @property {number} depthB - Depth at vertex B
+ * @property {number} depthC - Depth at vertex C
+ * @property {Mesh} mesh - Source mesh
+ * @property {number} faceIdx - Original face index
+ * @property {Vector3} normal - Face normal (world space)
+ * @property {number} constant - Plane constant d
  */
 
 /**
@@ -76,6 +97,12 @@ export function extractEdges(mesh, cameraPosition) {
     const SNAP = 1000; // Precision: 3 decimal places
 
     // Position-based edge key (not index-based, handles duplicate vertices)
+    /**
+     * 
+     * @param {Vector3} va 
+     * @param {Vector3} vb 
+     * @returns 
+     */
     const getEdgeKey = (va, vb) => {
         const ax = Math.round(va.x * SNAP);
         const ay = Math.round(va.y * SNAP);
@@ -91,6 +118,11 @@ export function extractEdges(mesh, cameraPosition) {
         return keyA < keyB ? `${keyA}|${keyB}` : `${keyB}|${keyA}`;
     };
 
+    /**
+     * 
+     * @param {number} idx 
+     * @returns 
+     */
     const getVertex = (idx) => {
         const v = new Vector3(
             position.getX(idx),
@@ -100,6 +132,13 @@ export function extractEdges(mesh, cameraPosition) {
         return v.applyMatrix4(mesh.matrixWorld);
     };
 
+    /**
+     * 
+     * @param {Vector3} v0 
+     * @param {Vector3} v1 
+     * @param {Vector3} v2 
+     * @returns 
+     */
     const getFaceNormal = (v0, v1, v2) => {
         const edge1 = new Vector3().subVectors(v1, v0);
         const edge2 = new Vector3().subVectors(v2, v0);
@@ -940,6 +979,7 @@ function edgeLiesAlongFaceEdge(edgeA, edgeB, faceEdgeA, faceEdgeB, tolerance = 2
     if (lenSq < 1e-10) return false;  // Degenerate face edge
 
     // Project edge endpoints onto face edge line
+    /** @param {{x:number, y:number}} p - Point with x,y */
     const projectAndCheck = (p) => {
         // Project p onto line defined by faceEdgeA->faceEdgeB
         const t = ((p.x - faceEdgeA.x) * dx + (p.y - faceEdgeA.y) * dy) / lenSq;
@@ -961,8 +1001,8 @@ function edgeLiesAlongFaceEdge(edgeA, edgeB, faceEdgeA, faceEdgeB, tolerance = 2
 
 /**
  * Find all faces adjacent to an edge geometrically
- * @param {Object} edge - Edge with a, b (2D points)
- * @param {Object[]} projectedFaces - Array of projected faces
+ * @param {Edge2D} edge - Edge with a, b (2D points)
+ * @param {ProjectedFace[]} projectedFaces - Array of projected faces
  * @returns {Object[]} - Array of matching faces with match type
  */
 export function findAdjacentFaces(edge, projectedFaces) {
@@ -1028,7 +1068,7 @@ function barycentricDepth(p, a, b, c, depthA, depthB, depthC) {
  * Post-split smooth filter: removes T-junction straggler edges that lie on a coplanar face
  * This catches "straggler" edges from T-junctions that extend into smooth surfaces
  * @param {Edge2D[]} edges - Split edges to filter
- * @param {Object[]} projectedFaces - Projected faces with normals
+ * @param {ProjectedFace[]} projectedFaces - Projected faces with normals
  * @param {number} coplanarThreshold - Normal dot product threshold (default 0.99)
  * @param {number} distanceThreshold - Plane distance threshold (default 0.5)
  * @returns {Edge2D[]}
@@ -1119,9 +1159,8 @@ export function filterSmoothSplitEdges(edges, projectedFaces, coplanarThreshold 
 /**
  * Test edge visibility using pure math (point-in-triangle + depth)
  * No GPU, no raycasting - fully mathematical
- * WASM-accelerated when available
  * @param {Edge2D[]} edges 
- * @param {Object[]} projectedFaces - Array of {a2d, b2d, c2d, depthA, depthB, depthC, mesh, faceIdx}
+ * @param {ProjectedFace[]} projectedFaces - Array of {a2d, b2d, c2d, depthA, depthB, depthC, mesh, faceIdx}
  * @param {Camera} camera
  * @returns {Edge2D[]}
  */
@@ -1133,88 +1172,11 @@ export function testOcclusionMath(edges, projectedFaces, camera) {
 }
 
 /**
- * WASM-accelerated occlusion test
- * Converts Edge2D/Face arrays to flat Float64Arrays for WASM processing
- */
-function testOcclusionMathWASM(edges, projectedFaces, cameraPos) {
-    // Build mesh ID map for parent-face exclusion
-    const meshIdMap = new Map();
-    let meshCounter = 0;
-
-    // Convert edges to flat array: [ax, ay, a_depth, bx, by, b_depth, ...]
-    const edgeData = new Array(edges.length * 6);
-    // Edge-to-face mapping: [mesh_id, face_id, face_id2, ...] (3 values per edge)
-    const edgeMeshFaceData = new Array(edges.length * 3);
-
-    for (let i = 0; i < edges.length; i++) {
-        const edge = edges[i];
-        const aDepth = cameraPos.distanceTo(edge.a3d);
-        const bDepth = cameraPos.distanceTo(edge.b3d);
-
-        edgeData[i * 6] = edge.a.x;
-        edgeData[i * 6 + 1] = edge.a.y;
-        edgeData[i * 6 + 2] = aDepth;
-        edgeData[i * 6 + 3] = edge.b.x;
-        edgeData[i * 6 + 4] = edge.b.y;
-        edgeData[i * 6 + 5] = bDepth;
-
-        // Get mesh ID
-        if (!meshIdMap.has(edge.mesh)) {
-            meshIdMap.set(edge.mesh, meshCounter++);
-        }
-        edgeMeshFaceData[i * 3] = meshIdMap.get(edge.mesh);
-        edgeMeshFaceData[i * 3 + 1] = edge.faceIdx ?? -1;
-        edgeMeshFaceData[i * 3 + 2] = edge.faceIdx2 ?? -1;  // Include second face!
-    }
-
-    // Convert faces to flat array: [ax, ay, a_depth, bx, by, b_depth, cx, cy, c_depth, mesh_id, face_id, ...]
-    const faceData = new Array(projectedFaces.length * 11);
-
-    for (let i = 0; i < projectedFaces.length; i++) {
-        const face = projectedFaces[i];
-
-        if (!meshIdMap.has(face.mesh)) {
-            meshIdMap.set(face.mesh, meshCounter++);
-        }
-
-        faceData[i * 11] = face.a2d.x;
-        faceData[i * 11 + 1] = face.a2d.y;
-        faceData[i * 11 + 2] = face.depthA;
-        faceData[i * 11 + 3] = face.b2d.x;
-        faceData[i * 11 + 4] = face.b2d.y;
-        faceData[i * 11 + 5] = face.depthB;
-        faceData[i * 11 + 6] = face.c2d.x;
-        faceData[i * 11 + 7] = face.c2d.y;
-        faceData[i * 11 + 8] = face.depthC;
-        faceData[i * 11 + 9] = meshIdMap.get(face.mesh);
-        faceData[i * 11 + 10] = face.faceIdx;
-    }
-
-    // Call WASM
-    const visibleIndices = wasmTestOcclusion(edgeData, faceData, edgeMeshFaceData);
-
-    // Map results back to Edge2D objects
-    const visibleEdges = [];
-    for (const idx of visibleIndices) {
-        const edge = edges[idx];
-        edge.visible = true;
-        visibleEdges.push(edge);
-    }
-
-    // Mark non-visible edges
-    const visibleSet = new Set(visibleIndices);
-    for (let i = 0; i < edges.length; i++) {
-        if (!visibleSet.has(i)) {
-            edges[i].visible = false;
-        }
-    }
-
-    console.log(`[WASM] Occlusion: ${visibleEdges.length}/${edges.length} visible`);
-    return visibleEdges;
-}
-
-/**
  * JS fallback for occlusion testing
+ * @param {Edge2D[]} edges 
+ * @param {ProjectedFace[]} projectedFaces 
+ * @param {Vector3} cameraPos 
+ * @returns {Edge2D[]}
  */
 function testOcclusionMathJS(edges, projectedFaces, cameraPos) {
     const visibleEdges = [];
@@ -1863,7 +1825,7 @@ export function computeHiddenLines(mesh, camera, scene, options = {}) {
  * @param {number} [options.minHatchDotProduct] - Minimum dot product with view vector to keep hatch edges (0-1)
  * @param {number} [options.internalScale] - Internal scale factor (default: 4)
  * @param {number} [options.distanceThreshold] - Distance threshold for coplanar detection (default: 0.5)
- * @returns {{edges: Edge2D[], profiles: Edge2D[]}}
+ * @returns {{edges: Edge2D[], profiles: Edge2D[], allEdges: Edge2D[], projectedFaces: ProjectedFace[]}}
  */
 export function computeHiddenLinesMultiple(meshes, camera, scene, options = {}) {
     const {
@@ -1937,6 +1899,7 @@ export function computeHiddenLinesMultiple(meshes, camera, scene, options = {}) 
 
     // Build projected faces array for math occlusion
     console.time('buildProjectedFaces');
+    /** @type {ProjectedFace[]} */
     const projectedFaces = [];
     const cameraPos = camera.position;
     const halfWidth = width / 2;
@@ -2083,7 +2046,7 @@ export function computeHiddenLinesMultiple(meshes, camera, scene, options = {}) 
  * Classify edges as silhouettes if they border the void (one side has no mesh)
  * Uses 2D ray casting from edge midpoint perpendicular to the edge
  * @param {Edge2D[]} edges - Edges to classify
- * @param {Object[]} projectedFaces - Projected triangles for hit testing
+ * @param {ProjectedFace[]} projectedFaces - Projected triangles for hit testing
  */
 function classifySilhouettes(edges, projectedFaces) {
     const RAY_LENGTH = 1000; // Long ray to ensure we hit any face on that side
@@ -2127,6 +2090,13 @@ function classifySilhouettes(edges, projectedFaces) {
 
 /**
  * Check if a 2D ray from origin in direction (dx, dy) intersects any projected triangle
+ * @param {number} ox - Ray origin X
+ * @param {number} oy - Ray origin Y
+ * @param {number} dx - Ray direction X
+ * @param {number} dy - Ray direction Y
+ * @param {number} maxDist - Maximum ray distance
+ * @param {ProjectedFace[]} faces - Array of projected faces
+ * @returns {boolean}
  */
 function rayHitsAnyFace(ox, oy, dx, dy, maxDist, faces) {
     for (const face of faces) {
@@ -2139,6 +2109,15 @@ function rayHitsAnyFace(ox, oy, dx, dy, maxDist, faces) {
 
 /**
  * Check if 2D ray intersects a triangle (any of its 3 edges)
+ * @param {number} ox - Ray origin X
+ * @param {number} oy - Ray origin Y
+ * @param {number} rdx - Ray direction X
+ * @param {number} rdy - Ray direction Y
+ * @param {number} maxDist
+ * @param {Vector2} a - Triangle vertex A
+ * @param {Vector2} b - Triangle vertex B
+ * @param {Vector2} c - Triangle vertex C
+ * @returns {boolean}
  */
 function rayIntersectsTriangle(ox, oy, rdx, rdy, maxDist, a, b, c) {
     if (raySegmentIntersect(ox, oy, rdx, rdy, maxDist, a.x, a.y, b.x, b.y)) return true;
@@ -2149,6 +2128,16 @@ function rayIntersectsTriangle(ox, oy, rdx, rdy, maxDist, a, b, c) {
 
 /**
  * Check if 2D ray (origin ox,oy, direction rdx,rdy) intersects line segment (x1,y1)-(x2,y2)
+ * @param {number} ox
+ * @param {number} oy
+ * @param {number} rdx
+ * @param {number} rdy
+ * @param {number} maxDist
+ * @param {number} x1
+ * @param {number} y1
+ * @param {number} x2
+ * @param {number} y2
+ * @returns {boolean}
  */
 function raySegmentIntersect(ox, oy, rdx, rdy, maxDist, x1, y1, x2, y2) {
     const sdx = x2 - x1;

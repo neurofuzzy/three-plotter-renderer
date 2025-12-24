@@ -38,16 +38,7 @@ export class Optimize {
    */
   static segments(segs, noSplitColinear = false, trimSmall = true, smallDist = 1, optimizePathOrder = false, splitTeeIntersections = false, splitCrossIntersections = false) {
 
-    // Check if segments have edge metadata (isHatch, mesh, etc.) that would be lost in WASM
-    // If so, skip WASM to preserve the metadata
-    const hasEdgeMetadata = segs.length > 0 && (segs[0].isHatch !== undefined || segs[0].mesh !== undefined || segs[0].isSilhouette !== undefined);
-
-    // Try WASM-accelerated path (only for plain Segment objects without metadata)
-
-    if (hasEdgeMetadata) {
-      console.log('[optimize] Skipping WASM to preserve edge metadata');
-    }
-    segs = Optimize._segmentsJS(segs, noSplitColinear, trimSmall, smallDist);
+    segs = Optimize._segments(segs, noSplitColinear, trimSmall, smallDist);
 
     if (optimizePathOrder) {
       segs = Analyzer.pathOrder(segs, splitTeeIntersections, splitCrossIntersections);
@@ -57,50 +48,10 @@ export class Optimize {
   }
 
   /**
-   * WASM-accelerated segment optimization
-   * @private
-   */
-  static _segmentsWASM(segs, noSplitColinear, trimSmall, smallDist) {
-    // Convert Segment objects to flat array [ax, ay, bx, by, ...]
-    const flatSegs = new Array(segs.length * 4);
-    for (let i = 0; i < segs.length; i++) {
-      flatSegs[i * 4] = segs[i].a.x;
-      flatSegs[i * 4 + 1] = segs[i].a.y;
-      flatSegs[i * 4 + 2] = segs[i].b.x;
-      flatSegs[i * 4 + 3] = segs[i].b.y;
-    }
-
-    // Step 1: Dedupe
-    let result = wasmDedupe(flatSegs);
-
-    // Step 2: Merge colinear (if enabled)
-    if (!noSplitColinear) {
-      result = wasmMergeColinear(result);
-    }
-
-    // Step 3: Trim small (if enabled)
-    if (trimSmall) {
-      result = wasmTrimSmall(result, smallDist);
-    }
-
-    // Convert back to Segment objects
-    const outputSegs = [];
-    for (let i = 0; i < result.length; i += 4) {
-      outputSegs.push(new Segment(
-        new Point(result[i], result[i + 1]),
-        new Point(result[i + 2], result[i + 3])
-      ));
-    }
-
-    console.log(`[WASM] Optimize: ${segs.length} -> ${outputSegs.length} segments`);
-    return outputSegs;
-  }
-
-  /**
    * JS fallback for segment optimization  
    * @private
    */
-  static _segmentsJS(segs, noSplitColinear, trimSmall, smallDist) {
+  static _segments(segs, noSplitColinear, trimSmall, smallDist) {
     const sb = segs;
     segs = [];
 
