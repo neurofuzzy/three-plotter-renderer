@@ -8,7 +8,7 @@ export default defineConfig({
 
     build: {
         lib: {
-            entry: resolve(__dirname, 'src/plotter-renderer.js'),
+            entry: resolve(__dirname, 'src/index.js'),
             name: 'ThreePlotterRenderer',
             fileName: (format) => `three-plotter-renderer.${format}.js`,
             formats: ['es', 'umd'],
@@ -22,10 +22,11 @@ export default defineConfig({
             },
         },
         outDir: 'dist',
+        sourcemap: true,
     },
 
     server: {
-        open: '/examples/',
+        open: '/index.html',
     },
 
     optimizeDeps: {

@@ -1,410 +1,410 @@
-import { Vector2 as D, WebGLRenderTarget as yt, NearestFilter as U, MeshNormalMaterial as vt, MeshDepthMaterial as Et, RGBADepthPacking as kt, Vector3 as $, Object3D as mt, Color as $t, Camera as It } from "three";
-function Xt(i, t, n, e = {}) {
+import { Vector2 as W, WebGLRenderTarget as lt, NearestFilter as Q, MeshNormalMaterial as Ft, MeshDepthMaterial as Xt, RGBADepthPacking as Tt, Vector3 as $, UnsignedByteType as Yt, RGBAFormat as qt, ShaderMaterial as zt, DoubleSide as At, BufferGeometry as Dt, BufferAttribute as dt, Mesh as Wt, Scene as Bt, Raycaster as Ht, Color as Rt, Camera as Lt, Object3D as mt } from "three";
+function Vt(i, t, e, n = {}) {
   const {
     resolution: o = 2,
     // Render at 2x for smooth boundaries
     normalBuckets: s = 12,
     // Quantize normals into N directions
-    minArea: r = 100,
+    minArea: c = 100,
     // Minimum region area in pixels (at output scale)
-    simplifyTolerance: h = 2,
+    simplifyTolerance: l = 2,
     insetPixels: a = 0
     // Inset boundaries by this many pixels (GPU erosion)
-  } = e, l = i.getSize(new D()), c = Math.floor(l.x * o), u = Math.floor(l.y * o), f = Math.round(a * o), d = Ot(i, t, n, c, u), m = Yt(i, t, n, c, u);
-  let { regionMap: p, normalLookup: w } = qt(d, c, u);
-  f > 0 && (p = Ct(p, c, u, f));
-  const { labels: y, regionCount: x } = Ft(p, c, u), g = [];
-  for (let b = 1; b <= x; b++) {
-    const S = Dt(y, c, u, b);
+  } = n, h = i.getSize(new W()), r = Math.floor(h.x * o), u = Math.floor(h.y * o), f = Math.round(a * o), d = Nt(i, t, e, r, u), y = jt(i, t, e, r, u);
+  let { regionMap: m, normalLookup: b } = Kt(d, r, u);
+  f > 0 && (m = Zt(m, r, u, f));
+  const { labels: p, regionCount: x } = Qt(m, r, u), g = [];
+  for (let w = 1; w <= x; w++) {
+    const S = _t(p, r, u, w);
     if (S.length < 3) continue;
-    const P = it(S, h), v = Math.abs(zt(P));
-    if (v < r) continue;
-    const I = Wt(y, p, w, c, u, b), E = Tt(y, m, c, u, b);
+    const v = it(S, l), E = Math.abs(te(v));
+    if (E < c) continue;
+    const P = Gt(p, m, b, r, u, w), k = Jt(p, y, r, u, w);
     g.push({
-      boundary: P.map((Y) => new D(
-        Y.x / o - l.x / 2,
-        Y.y / o - l.y / 2
+      boundary: v.map((O) => new W(
+        O.x / o - h.x / 2,
+        O.y / o - h.y / 2
         // Y already flipped during readback
       )),
-      normal: I,
-      depth: E,
+      normal: P,
+      depth: k,
       // 0-1 normalized depth
-      area: v / (o * o),
-      regionId: b
+      area: E / (o * o),
+      regionId: w
     });
   }
   return g;
 }
-function Ot(i, t, n, e, o) {
-  const s = new yt(e, o, {
-    minFilter: U,
-    magFilter: U
-  }), r = new vt({ flatShading: !0 }), h = /* @__PURE__ */ new Map(), a = [];
-  t.traverse((c) => {
-    c.isMesh ? (h.set(c, c.material), c.material = r) : (c.isLineSegments || c.isLine || c.isPoints) && c.visible && (a.push(c), c.visible = !1);
-  }), i.setRenderTarget(s), i.render(t, n), t.traverse((c) => {
-    c.isMesh && h.has(c) && (c.material = h.get(c));
+function Nt(i, t, e, n, o) {
+  const s = new lt(n, o, {
+    minFilter: Q,
+    magFilter: Q
+  }), c = new Ft({ flatShading: !0 }), l = /* @__PURE__ */ new Map(), a = [];
+  t.traverse((r) => {
+    r.isMesh ? (l.set(r, r.material), r.material = c) : (r.isLineSegments || r.isLine || r.isPoints) && r.visible && (a.push(r), r.visible = !1);
+  }), i.setRenderTarget(s), i.render(t, e), t.traverse((r) => {
+    r.isMesh && l.has(r) && (r.material = l.get(r));
   });
-  for (const c of a)
-    c.visible = !0;
+  for (const r of a)
+    r.visible = !0;
   i.setRenderTarget(null);
-  const l = new Uint8Array(e * o * 4);
-  return i.readRenderTargetPixels(s, 0, 0, e, o, l), s.dispose(), r.dispose(), l;
+  const h = new Uint8Array(n * o * 4);
+  return i.readRenderTargetPixels(s, 0, 0, n, o, h), s.dispose(), c.dispose(), h;
 }
-function Yt(i, t, n, e, o) {
-  const s = new yt(e, o, {
-    minFilter: U,
-    magFilter: U
-  }), r = new Et({ depthPacking: kt }), h = /* @__PURE__ */ new Map(), a = [];
-  t.traverse((c) => {
-    c.isMesh ? (h.set(c, c.material), c.material = r) : (c.isLineSegments || c.isLine || c.isPoints) && c.visible && (a.push(c), c.visible = !1);
-  }), i.setRenderTarget(s), i.render(t, n), t.traverse((c) => {
-    c.isMesh && h.has(c) && (c.material = h.get(c));
+function jt(i, t, e, n, o) {
+  const s = new lt(n, o, {
+    minFilter: Q,
+    magFilter: Q
+  }), c = new Xt({ depthPacking: Tt }), l = /* @__PURE__ */ new Map(), a = [];
+  t.traverse((r) => {
+    r.isMesh ? (l.set(r, r.material), r.material = c) : (r.isLineSegments || r.isLine || r.isPoints) && r.visible && (a.push(r), r.visible = !1);
+  }), i.setRenderTarget(s), i.render(t, e), t.traverse((r) => {
+    r.isMesh && l.has(r) && (r.material = l.get(r));
   });
-  for (const c of a)
-    c.visible = !0;
+  for (const r of a)
+    r.visible = !0;
   i.setRenderTarget(null);
-  const l = new Uint8Array(e * o * 4);
-  return i.readRenderTargetPixels(s, 0, 0, e, o, l), s.dispose(), r.dispose(), l;
+  const h = new Uint8Array(n * o * 4);
+  return i.readRenderTargetPixels(s, 0, 0, n, o, h), s.dispose(), c.dispose(), h;
 }
-function Tt(i, t, n, e, o) {
-  let s = 0, r = 0;
-  for (let h = 0; h < e; h++)
-    for (let a = 0; a < n; a++)
-      if (i[h * n + a] === o) {
-        const l = (h * n + a) * 4, c = t[l] / 255, u = t[l + 1] / 255, f = t[l + 2] / 255, d = t[l + 3] / 255, m = c + u / 256 + f / 65536 + d / 16777216;
-        s += m, r++;
+function Jt(i, t, e, n, o) {
+  let s = 0, c = 0;
+  for (let l = 0; l < n; l++)
+    for (let a = 0; a < e; a++)
+      if (i[l * e + a] === o) {
+        const h = (l * e + a) * 4, r = t[h] / 255, u = t[h + 1] / 255, f = t[h + 2] / 255, d = t[h + 3] / 255, y = r + u / 256 + f / 65536 + d / 16777216;
+        s += y, c++;
       }
-  return r > 0 ? s / r : 0.5;
+  return c > 0 ? s / c : 0.5;
 }
-function Ct(i, t, n, e) {
+function Zt(i, t, e, n) {
   let o = i;
-  for (let s = 0; s < e; s++) {
-    const r = new Uint16Array(o);
-    for (let h = 1; h < n - 1; h++)
+  for (let s = 0; s < n; s++) {
+    const c = new Uint16Array(o);
+    for (let l = 1; l < e - 1; l++)
       for (let a = 1; a < t - 1; a++) {
-        const l = h * t + a;
-        if (o[l] === 0) continue;
-        const u = o[l - 1], f = o[l + 1], d = o[l - t], m = o[l + t];
-        (u === 0 || f === 0 || d === 0 || m === 0) && (r[l] = 0);
+        const h = l * t + a;
+        if (o[h] === 0) continue;
+        const u = o[h - 1], f = o[h + 1], d = o[h - t], y = o[h + t];
+        (u === 0 || f === 0 || d === 0 || y === 0) && (c[h] = 0);
       }
-    o = r;
+    o = c;
   }
   return o;
 }
-function qt(i, t, n, e) {
-  const o = new Uint16Array(t * n), s = {};
-  let r = 1;
-  const h = {};
-  for (let a = 0; a < t * n; a++) {
-    const l = a * 4, c = i[l], u = i[l + 1], f = i[l + 2];
-    if (c < 5 && u < 5 && f < 5) {
+function Kt(i, t, e, n) {
+  const o = new Uint16Array(t * e), s = {};
+  let c = 1;
+  const l = {};
+  for (let a = 0; a < t * e; a++) {
+    const h = a * 4, r = i[h], u = i[h + 1], f = i[h + 2];
+    if (r < 5 && u < 5 && f < 5) {
       o[a] = 0;
       continue;
     }
-    const d = c / 255 * 2 - 1, m = u / 255 * 2 - 1, p = f / 255 * 2 - 1, w = 4, y = Math.round(c / w) * w, x = Math.round(u / w) * w, g = Math.round(f / w) * w, b = `${y}|${x}|${g}`;
-    h[b] || (h[b] = r, s[r] = new $(d, m, p).normalize(), r++), o[a] = h[b];
+    const d = r / 255 * 2 - 1, y = u / 255 * 2 - 1, m = f / 255 * 2 - 1, b = 4, p = Math.round(r / b) * b, x = Math.round(u / b) * b, g = Math.round(f / b) * b, w = `${p}|${x}|${g}`;
+    l[w] || (l[w] = c, s[c] = new $(d, y, m).normalize(), c++), o[a] = l[w];
   }
   return { regionMap: o, normalLookup: s };
 }
-function Ft(i, t, n) {
-  const e = new Uint32Array(t * n), o = [];
+function Qt(i, t, e) {
+  const n = new Uint32Array(t * e), o = [];
   let s = 1;
-  function r(c) {
-    return o[c] !== c && (o[c] = r(o[c])), o[c];
+  function c(r) {
+    return o[r] !== r && (o[r] = c(o[r])), o[r];
   }
-  function h(c, u) {
-    const f = r(c), d = r(u);
+  function l(r, u) {
+    const f = c(r), d = c(u);
     f !== d && (o[d] = f);
   }
-  for (let c = 0; c < n; c++)
+  for (let r = 0; r < e; r++)
     for (let u = 0; u < t; u++) {
-      const f = c * t + u, d = i[f];
+      const f = r * t + u, d = i[f];
       if (d === 0) continue;
-      const m = [];
-      if (u > 0 && i[f - 1] === d && e[f - 1] > 0 && m.push(e[f - 1]), c > 0 && i[f - t] === d && e[f - t] > 0 && m.push(e[f - t]), m.length === 0)
-        e[f] = s, o[s] = s, s++;
+      const y = [];
+      if (u > 0 && i[f - 1] === d && n[f - 1] > 0 && y.push(n[f - 1]), r > 0 && i[f - t] === d && n[f - t] > 0 && y.push(n[f - t]), y.length === 0)
+        n[f] = s, o[s] = s, s++;
       else {
-        const p = Math.min(...m);
-        e[f] = p;
-        for (const w of m)
-          h(p, w);
+        const m = Math.min(...y);
+        n[f] = m;
+        for (const b of y)
+          l(m, b);
       }
     }
   const a = {};
-  let l = 0;
-  for (let c = 0; c < t * n; c++) {
-    if (e[c] === 0) continue;
-    const u = r(e[c]);
-    a[u] === void 0 && (l++, a[u] = l), e[c] = a[u];
+  let h = 0;
+  for (let r = 0; r < t * e; r++) {
+    if (n[r] === 0) continue;
+    const u = c(n[r]);
+    a[u] === void 0 && (h++, a[u] = h), n[r] = a[u];
   }
-  return { labels: e, regionCount: l };
+  return { labels: n, regionCount: h };
 }
-function Dt(i, t, n, e) {
+function _t(i, t, e, n) {
   const o = [];
-  let s = -1, r = -1;
-  t: for (let m = 0; m < n; m++)
-    for (let p = 0; p < t; p++)
-      if (i[m * t + p] === e && (p === 0 || i[m * t + p - 1] !== e || m === 0 || i[(m - 1) * t + p] !== e)) {
-        s = p, r = m;
+  let s = -1, c = -1;
+  t: for (let y = 0; y < e; y++)
+    for (let m = 0; m < t; m++)
+      if (i[y * t + m] === n && (m === 0 || i[y * t + m - 1] !== n || y === 0 || i[(y - 1) * t + m] !== n)) {
+        s = m, c = y;
         break t;
       }
   if (s === -1) return o;
-  const h = [1, 1, 0, -1, -1, -1, 0, 1], a = [0, 1, 1, 1, 0, -1, -1, -1];
-  let l = s, c = r, u = 7;
-  const f = t * n * 2;
+  const l = [1, 1, 0, -1, -1, -1, 0, 1], a = [0, 1, 1, 1, 0, -1, -1, -1];
+  let h = s, r = c, u = 7;
+  const f = t * e * 2;
   let d = 0;
   do {
-    o.push({ x: l, y: c });
-    let m = !1;
-    for (let p = 0; p < 8; p++) {
-      const w = (u + 6 + p) % 8, y = l + h[w], x = c + a[w];
-      if (y >= 0 && y < t && x >= 0 && x < n && i[x * t + y] === e) {
-        l = y, c = x, u = w, m = !0;
+    o.push({ x: h, y: r });
+    let y = !1;
+    for (let m = 0; m < 8; m++) {
+      const b = (u + 6 + m) % 8, p = h + l[b], x = r + a[b];
+      if (p >= 0 && p < t && x >= 0 && x < e && i[x * t + p] === n) {
+        h = p, r = x, u = b, y = !0;
         break;
       }
     }
-    if (!m) break;
+    if (!y) break;
     d++;
-  } while ((l !== s || c !== r) && d < f);
+  } while ((h !== s || r !== c) && d < f);
   return o;
 }
-function Wt(i, t, n, e, o, s) {
-  let r = 0, h = 0, a = 0;
+function Gt(i, t, e, n, o, s) {
+  let c = 0, l = 0, a = 0;
   for (let d = 0; d < o; d++)
-    for (let m = 0; m < e; m++)
-      i[d * e + m] === s && (r += m, h += d, a++);
+    for (let y = 0; y < n; y++)
+      i[d * n + y] === s && (c += y, l += d, a++);
   if (a === 0) return new $(0, 0, 1);
-  const l = Math.round(r / a), u = Math.round(h / a) * e + l, f = t[u];
-  return n[f] || new $(0, 0, 1);
+  const h = Math.round(c / a), u = Math.round(l / a) * n + h, f = t[u];
+  return e[f] || new $(0, 0, 1);
 }
 function it(i, t) {
   if (i.length < 3) return i;
-  let n = 0, e = 0;
+  let e = 0, n = 0;
   const o = i[0], s = i[i.length - 1];
-  for (let r = 1; r < i.length - 1; r++) {
-    const h = Ht(i[r], o, s);
-    h > n && (n = h, e = r);
+  for (let c = 1; c < i.length - 1; c++) {
+    const l = Ut(i[c], o, s);
+    l > e && (e = l, n = c);
   }
-  if (n > t) {
-    const r = it(i.slice(0, e + 1), t), h = it(i.slice(e), t);
-    return r.slice(0, -1).concat(h);
+  if (e > t) {
+    const c = it(i.slice(0, n + 1), t), l = it(i.slice(n), t);
+    return c.slice(0, -1).concat(l);
   } else
     return [o, s];
 }
-function Ht(i, t, n) {
-  const e = n.x - t.x, o = n.y - t.y, s = e * e + o * o;
+function Ut(i, t, e) {
+  const n = e.x - t.x, o = e.y - t.y, s = n * n + o * o;
   if (s < 1e-10)
     return Math.sqrt((i.x - t.x) ** 2 + (i.y - t.y) ** 2);
-  const r = ((i.x - t.x) * e + (i.y - t.y) * o) / s, h = t.x + r * e, a = t.y + r * o;
-  return Math.sqrt((i.x - h) ** 2 + (i.y - a) ** 2);
+  const c = ((i.x - t.x) * n + (i.y - t.y) * o) / s, l = t.x + c * n, a = t.y + c * o;
+  return Math.sqrt((i.x - l) ** 2 + (i.y - a) ** 2);
 }
-function zt(i) {
+function te(i) {
   let t = 0;
-  for (let n = 0; n < i.length; n++) {
-    const e = (n + 1) % i.length;
-    t += i[n].x * i[e].y, t -= i[e].x * i[n].y;
+  for (let e = 0; e < i.length; e++) {
+    const n = (e + 1) % i.length;
+    t += i[e].x * i[n].y, t -= i[n].x * i[e].y;
   }
   return t / 2;
 }
-function At(i, t, n, e) {
-  const o = n / 2, s = e / 2, r = new $(0, 1, 0), h = new $(0, 0, 1);
+function ee(i, t, e, n) {
+  const o = e / 2, s = n / 2, c = new $(0, 1, 0), l = new $(0, 0, 1);
   let a;
-  Math.abs(i.y) > 0.9 ? a = h.clone() : (a = new $().crossVectors(r, i).normalize(), a.lengthSq() < 0.01 && (a = h.clone()));
-  const l = new $(0, 0, 0), c = a.clone().multiplyScalar(100), u = l.clone().project(t), f = c.clone().project(t), d = new D(
+  Math.abs(i.y) > 0.9 ? a = l.clone() : (a = new $().crossVectors(c, i).normalize(), a.lengthSq() < 0.01 && (a = l.clone()));
+  const h = new $(0, 0, 0), r = a.clone().multiplyScalar(100), u = h.clone().project(t), f = r.clone().project(t), d = new W(
     u.x * o,
     -u.y * s
-  ), p = new D(
+  ), m = new W(
     f.x * o,
     -f.y * s
-  ).clone().sub(d).normalize(), y = a.clone().multiplyScalar(1e5).clone().project(t);
+  ).clone().sub(d).normalize(), p = a.clone().multiplyScalar(1e5).clone().project(t);
   let x = null;
-  return Math.abs(y.x) < 100 && Math.abs(y.y) < 100 && y.z < 1 && (x = new D(
-    y.x * o,
-    -y.y * s
-  )), { direction: p, vanishingPoint: x };
+  return Math.abs(p.x) < 100 && Math.abs(p.y) < 100 && p.z < 1 && (x = new W(
+    p.x * o,
+    -p.y * s
+  )), { direction: m, vanishingPoint: x };
 }
-function Bt(i, t, n = {}) {
+function ne(i, t, e = {}) {
   const {
-    baseSpacing: e = 8,
+    baseSpacing: n = 8,
     // Base spacing in screen pixels
     minSpacing: o = 3,
     // Minimum spacing
     maxSpacing: s = 20,
     // Maximum spacing
-    depthFactor: r = 0.5,
+    depthFactor: c = 0.5,
     // How much depth affects density
-    screenWidth: h = 1200,
+    screenWidth: l = 1200,
     screenHeight: a = 800,
-    axisSettings: l = {}
+    axisSettings: h = {}
     // { x: { rotation: 0, spacing: 10 }, y: ... }
-  } = n, { boundary: c, normal: u, depth: f = 0.5 } = i;
-  if (c.length < 3) return [];
-  const d = Math.abs(u.x), m = Math.abs(u.y), p = Math.abs(u.z);
-  let w = "y";
-  d >= m && d >= p ? w = "x" : p >= m && p >= d && (w = "z");
-  const y = l[w] || {}, x = y.rotation || 0, g = y.spacing;
-  console.log(`[Hatch] normal=(${u.x.toFixed(2)}, ${u.y.toFixed(2)}, ${u.z.toFixed(2)}) => axis=${w}, rotation=${x}, spacing=${g}`);
-  const { direction: b, vanishingPoint: S } = At(
+  } = e, { boundary: r, normal: u, depth: f = 0.5 } = i;
+  if (r.length < 3) return [];
+  const d = Math.abs(u.x), y = Math.abs(u.y), m = Math.abs(u.z);
+  let b = "y";
+  d >= y && d >= m ? b = "x" : m >= y && m >= d && (b = "z");
+  const p = h[b] || {}, x = p.rotation || 0, g = p.spacing;
+  console.log(`[Hatch] normal=(${u.x.toFixed(2)}, ${u.y.toFixed(2)}, ${u.z.toFixed(2)}) => axis=${b}, rotation=${x}, spacing=${g}`);
+  const { direction: w, vanishingPoint: S } = ee(
     u,
     t,
-    h,
+    l,
     a
   );
-  let P = b;
+  let v = w;
   if (x !== 0) {
-    const C = x * (Math.PI / 180), W = Math.cos(C), B = Math.sin(C);
-    P = new D(
-      b.x * W - b.y * B,
-      b.x * B + b.y * W
+    const Y = x * (Math.PI / 180), B = Math.cos(Y), R = Math.sin(Y);
+    v = new W(
+      w.x * B - w.y * R,
+      w.x * R + w.y * B
     );
   }
-  const v = new D(-P.y, P.x), E = Math.max(o, Math.min(
+  const E = new W(-v.y, v.x), k = Math.max(o, Math.min(
     s,
-    (g !== void 0 ? g : e) + f * r * (s - o)
+    (g !== void 0 ? g : n) + f * c * (s - o)
   ));
-  let Y = 1 / 0, z = -1 / 0, R = 1 / 0, X = -1 / 0;
-  for (const C of c)
-    Y = Math.min(Y, C.x), z = Math.max(z, C.x), R = Math.min(R, C.y), X = Math.max(X, C.y);
-  const H = (Y + z) / 2, O = (R + X) / 2, T = new D(H, O), A = Math.sqrt((z - Y) ** 2 + (X - R) ** 2), q = [];
+  let O = 1 / 0, F = -1 / 0, H = 1 / 0, I = -1 / 0;
+  for (const Y of r)
+    O = Math.min(O, Y.x), F = Math.max(F, Y.x), H = Math.min(H, Y.y), I = Math.max(I, Y.y);
+  const q = (O + F) / 2, X = (H + I) / 2, T = new W(q, X), A = Math.sqrt((F - O) ** 2 + (I - H) ** 2), z = [];
   if (S && Math.abs(x) < 5 && S.distanceTo(T) < A * 5) {
-    const C = S.distanceTo(T), W = Math.ceil(A / E) * 2, N = Math.atan2(A, C) * 2 / W, j = Math.atan2(
-      O - S.y,
-      H - S.x
+    const Y = S.distanceTo(T), B = Math.ceil(A / k) * 2, V = Math.atan2(A, Y) * 2 / B, j = Math.atan2(
+      X - S.y,
+      q - S.x
     );
-    for (let J = -W; J <= W; J++) {
-      const K = j + J * N, Q = new D(Math.cos(K), Math.sin(K)), nt = S.clone(), et = S.clone().add(Q.clone().multiplyScalar(C * 10)), ot = ut({ start: nt, end: et }, c);
-      q.push(...ot);
+    for (let J = -B; J <= B; J++) {
+      const K = j + J * V, _ = new W(Math.cos(K), Math.sin(K)), et = S.clone(), nt = S.clone().add(_.clone().multiplyScalar(Y * 10)), ot = xt({ start: et, end: nt }, r);
+      z.push(...ot);
     }
   } else {
-    const C = Math.ceil(A / E) + 2;
-    for (let W = -C; W <= C; W++) {
-      const B = v.clone().multiplyScalar(W * E), N = T.clone().add(B), j = N.clone().add(P.clone().multiplyScalar(-A)), J = N.clone().add(P.clone().multiplyScalar(A)), K = ut({ start: j, end: J }, c);
-      q.push(...K);
+    const Y = Math.ceil(A / k) + 2;
+    for (let B = -Y; B <= Y; B++) {
+      const R = E.clone().multiplyScalar(B * k), V = T.clone().add(R), j = V.clone().add(v.clone().multiplyScalar(-A)), J = V.clone().add(v.clone().multiplyScalar(A)), K = xt({ start: j, end: J }, r);
+      z.push(...K);
     }
   }
-  return q;
+  return z;
 }
-function ut(i, t) {
-  const n = [], e = t.length;
-  for (let s = 0; s < e; s++) {
-    const r = t[s], h = t[(s + 1) % e], a = Nt(
+function xt(i, t) {
+  const e = [], n = t.length;
+  for (let s = 0; s < n; s++) {
+    const c = t[s], l = t[(s + 1) % n], a = ie(
       i.start.x,
       i.start.y,
       i.end.x,
       i.end.y,
-      r.x,
-      r.y,
-      h.x,
-      h.y
+      c.x,
+      c.y,
+      l.x,
+      l.y
     );
-    a && n.push({
-      point: new D(a.x, a.y),
+    a && e.push({
+      point: new W(a.x, a.y),
       t: a.t
     });
   }
-  if (n.length < 2) return [];
-  n.sort((s, r) => s.t - r.t);
+  if (e.length < 2) return [];
+  e.sort((s, c) => s.t - c.t);
   const o = [];
-  for (let s = 0; s < n.length - 1; s++) {
-    const r = (n[s].point.x + n[s + 1].point.x) / 2, h = (n[s].point.y + n[s + 1].point.y) / 2;
-    G(r, h, t) && o.push({
-      start: n[s].point,
-      end: n[s + 1].point
+  for (let s = 0; s < e.length - 1; s++) {
+    const c = (e[s].point.x + e[s + 1].point.x) / 2, l = (e[s].point.y + e[s + 1].point.y) / 2;
+    U(c, l, t) && o.push({
+      start: e[s].point,
+      end: e[s + 1].point
     });
   }
   return o;
 }
-function Rt(i, t) {
-  const n = [], e = t.length, o = G(i.start.x, i.start.y, t), s = G(i.end.x, i.end.y, t);
-  n.push({ point: i.start.clone(), t: 0, inside: o });
-  for (let a = 0; a < e; a++) {
-    const l = t[a], c = t[(a + 1) % e], u = Lt(
+function oe(i, t) {
+  const e = [], n = t.length, o = U(i.start.x, i.start.y, t), s = U(i.end.x, i.end.y, t);
+  e.push({ point: i.start.clone(), t: 0, inside: o });
+  for (let a = 0; a < n; a++) {
+    const h = t[a], r = t[(a + 1) % n], u = se(
       i.start.x,
       i.start.y,
       i.end.x,
       i.end.y,
-      l.x,
-      l.y,
-      c.x,
-      c.y
+      h.x,
+      h.y,
+      r.x,
+      r.y
     );
-    u && u.t > 0 && u.t < 1 && n.push({
-      point: new D(u.x, u.y),
+    u && u.t > 0 && u.t < 1 && e.push({
+      point: new W(u.x, u.y),
       t: u.t,
       inside: null
       // will be determined by neighbors
     });
   }
-  n.push({ point: i.end.clone(), t: 1, inside: s }), n.sort((a, l) => a.t - l.t);
-  const r = [n[0]];
-  for (let a = 1; a < n.length; a++)
-    n[a].t - r[r.length - 1].t > 1e-4 && r.push(n[a]);
-  if (r.length < 2) return [i];
-  const h = [];
-  for (let a = 0; a < r.length - 1; a++) {
-    const l = (r[a].t + r[a + 1].t) / 2, c = i.start.x + l * (i.end.x - i.start.x), u = i.start.y + l * (i.end.y - i.start.y);
-    G(c, u, t) || h.push({
-      start: r[a].point.clone(),
-      end: r[a + 1].point.clone()
+  e.push({ point: i.end.clone(), t: 1, inside: s }), e.sort((a, h) => a.t - h.t);
+  const c = [e[0]];
+  for (let a = 1; a < e.length; a++)
+    e[a].t - c[c.length - 1].t > 1e-4 && c.push(e[a]);
+  if (c.length < 2) return [i];
+  const l = [];
+  for (let a = 0; a < c.length - 1; a++) {
+    const h = (c[a].t + c[a + 1].t) / 2, r = i.start.x + h * (i.end.x - i.start.x), u = i.start.y + h * (i.end.y - i.start.y);
+    U(r, u, t) || l.push({
+      start: c[a].point.clone(),
+      end: c[a + 1].point.clone()
     });
   }
-  return h;
+  return l;
 }
-function Lt(i, t, n, e, o, s, r, h) {
-  const a = (i - n) * (s - h) - (t - e) * (o - r);
+function se(i, t, e, n, o, s, c, l) {
+  const a = (i - e) * (s - l) - (t - n) * (o - c);
   if (Math.abs(a) < 1e-10) return null;
-  const l = ((i - o) * (s - h) - (t - s) * (o - r)) / a, c = -((i - n) * (t - s) - (t - e) * (i - o)) / a;
-  return l >= 0 && l <= 1 && c >= 0 && c <= 1 ? {
-    x: i + l * (n - i),
-    y: t + l * (e - t),
-    t: l
+  const h = ((i - o) * (s - l) - (t - s) * (o - c)) / a, r = -((i - e) * (t - s) - (t - n) * (i - o)) / a;
+  return h >= 0 && h <= 1 && r >= 0 && r <= 1 ? {
+    x: i + h * (e - i),
+    y: t + h * (n - t),
+    t: h
   } : null;
 }
-function Nt(i, t, n, e, o, s, r, h) {
-  const a = (i - n) * (s - h) - (t - e) * (o - r);
+function ie(i, t, e, n, o, s, c, l) {
+  const a = (i - e) * (s - l) - (t - n) * (o - c);
   if (Math.abs(a) < 1e-10) return null;
-  const l = ((i - o) * (s - h) - (t - s) * (o - r)) / a, c = -((i - n) * (t - s) - (t - e) * (i - o)) / a;
-  return c >= 0 && c <= 1 ? {
-    x: i + l * (n - i),
-    y: t + l * (e - t),
-    t: l
+  const h = ((i - o) * (s - l) - (t - s) * (o - c)) / a, r = -((i - e) * (t - s) - (t - n) * (i - o)) / a;
+  return r >= 0 && r <= 1 ? {
+    x: i + h * (e - i),
+    y: t + h * (n - t),
+    t: h
   } : null;
 }
-function G(i, t, n) {
-  let e = !1;
-  const o = n.length;
-  for (let s = 0, r = o - 1; s < o; r = s++) {
-    const h = n[s].x, a = n[s].y, l = n[r].x, c = n[r].y;
-    a > t != c > t && i < (l - h) * (t - a) / (c - a) + h && (e = !e);
+function U(i, t, e) {
+  let n = !1;
+  const o = e.length;
+  for (let s = 0, c = o - 1; s < o; c = s++) {
+    const l = e[s].x, a = e[s].y, h = e[c].x, r = e[c].y;
+    a > t != r > t && i < (h - l) * (t - a) / (r - a) + l && (n = !n);
   }
-  return e;
+  return n;
 }
-const ft = 1e-3;
-class k {
+const gt = 1e-3;
+class C {
   /**
    * @param {number} x
    * @param {number} y
    */
-  constructor(t, n) {
-    this.x = t, this.y = n;
+  constructor(t, e) {
+    this.x = t, this.y = e;
   }
   /**
    * @param {Point} pt
    */
   static clone(t) {
-    return new k(t.x, t.y);
+    return new C(t.x, t.y);
   }
 }
-class rt {
+class ct {
   /**
    * @param {number} minX
    * @param {number} minY
    * @param {number} maxX
    * @param {number} maxY
    */
-  constructor(t, n, e, o) {
-    this.minX = t, this.minY = n, this.maxX = e, this.maxY = o;
+  constructor(t, e, n, o) {
+    this.minX = t, this.minY = e, this.maxX = n, this.maxY = o;
   }
   width() {
     return Math.abs(this.maxX - this.minX);
@@ -413,7 +413,7 @@ class rt {
     return Math.abs(this.maxY - this.minY);
   }
 }
-class Vt {
+class ce {
   /**
    *
    * @param {number} r radius
@@ -422,43 +422,43 @@ class Vt {
     this.r = t;
   }
 }
-class F {
+class D {
   /**
    *
    * @param {Point} a start point
    * @param {Point} b end point
    */
-  constructor(t, n) {
-    this.a = t, this.b = n, this.tags = {};
+  constructor(t, e) {
+    this.a = t, this.b = e, this.tags = {};
   }
   /**
    *
    * @param {Segment} segA
    * @param {Segment} segB
    */
-  static isEqual(t, n) {
-    return M.pointsEqual(t.a, n.a) && M.pointsEqual(t.b, n.b) || M.pointsEqual(t.b, n.a) && M.pointsEqual(t.a, n.b);
+  static isEqual(t, e) {
+    return M.pointsEqual(t.a, e.a) && M.pointsEqual(t.b, e.b) || M.pointsEqual(t.b, e.a) && M.pointsEqual(t.a, e.b);
   }
   /**
    * @param {Segment} seg
    */
   static clone(t) {
-    return new F(new k(t.a.x, t.a.y), new k(t.b.x, t.b.y));
+    return new D(new C(t.a.x, t.a.y), new C(t.b.x, t.b.y));
   }
 }
-class jt {
+class re {
   constructor() {
     this.pivot = { x: 0, y: 0 }, this.rotation = 0, this.isOpen = !0, this.isGroup = !1, this.isStrong = !1, this._makeAbsolute = (t) => {
-      let n = this.rotation * Math.PI / 180;
-      t.forEach((e, o) => {
-        const s = { x: e.x, y: e.y };
-        M.rotatePoint(s, n), s.x += this.pivot.x, s.y += this.pivot.y, t[o] = s;
+      let e = this.rotation * Math.PI / 180;
+      t.forEach((n, o) => {
+        const s = { x: n.x, y: n.y };
+        M.rotatePoint(s, e), s.x += this.pivot.x, s.y += this.pivot.y, t[o] = s;
       });
     }, this._makeSegsAbsolute = (t) => {
-      let n = this.rotation * Math.PI / 180;
-      t.forEach((e) => {
-        const o = { x: e.a.x, y: e.a.y }, s = { x: e.b.x, y: e.b.y };
-        M.rotatePoint(o, n), M.rotatePoint(s, n), M.addToPoint(o, this.pivot), M.addToPoint(s, this.pivot), e.a = o, e.b = s;
+      let e = this.rotation * Math.PI / 180;
+      t.forEach((n) => {
+        const o = { x: n.a.x, y: n.a.y }, s = { x: n.b.x, y: n.b.y };
+        M.rotatePoint(o, e), M.rotatePoint(s, e), M.addToPoint(o, this.pivot), M.addToPoint(s, this.pivot), n.a = o, n.b = s;
       });
     };
   }
@@ -483,22 +483,22 @@ class jt {
    * @returns {BoundingBox}
    */
   getBoundingBox(t = !1) {
-    const n = new rt(1e6, 1e6, -1e6, -1e6);
+    const e = new ct(1e6, 1e6, -1e6, -1e6);
     return this.toPoints(t).forEach((o) => {
-      n.minX = Math.min(n.minX, o.x), n.minY = Math.min(n.minY, o.y), n.maxX = Math.max(n.maxX, o.x), n.maxY = Math.max(n.maxY, o.y);
-    }), n;
+      e.minX = Math.min(e.minX, o.x), e.minY = Math.min(e.minY, o.y), e.maxX = Math.max(e.maxX, o.x), e.maxY = Math.max(e.maxY, o.y);
+    }), e;
   }
   /**
    * @returns {BoundingCircle}
    */
   getBoundingCircle() {
-    const t = new Vt();
-    return this.toPoints(!0).forEach((e) => {
-      t.r = Math.max(t.r, Math.sqrt(e.x * e.x + e.y * e.y));
+    const t = new ce();
+    return this.toPoints(!0).forEach((n) => {
+      t.r = Math.max(t.r, Math.sqrt(n.x * n.x + n.y * n.y));
     }), t;
   }
 }
-class _ extends jt {
+class G extends re {
   /**
    *
    * @param {Segment[]} segments
@@ -517,7 +517,7 @@ class _ extends jt {
    * @returns {Point[]}
    */
   toPoints(t = !1) {
-    return this.toSegments(t).reduce((n, e) => e ? n.concat([e.a, e.b]) : n, []);
+    return this.toSegments(t).reduce((e, n) => n ? e.concat([n.a, n.b]) : e, []);
   }
   /**
    *
@@ -525,23 +525,23 @@ class _ extends jt {
    * @returns {Segment[]};
    */
   toSegments(t = !1) {
-    let n = this._segments.reduce((e, o) => o ? e.concat(F.clone(o)) : e, []);
-    return t || this._makeSegsAbsolute(n), n;
+    let e = this._segments.reduce((n, o) => o ? n.concat(D.clone(o)) : n, []);
+    return t || this._makeSegsAbsolute(e), e;
   }
   bake() {
   }
   result() {
-    return _.clone(this);
+    return G.clone(this);
   }
   /**
    *
    * @param {Segments} segs
    */
   static clone(t) {
-    let n = t._segments, e = [], o = n.length;
+    let e = t._segments, n = [], o = e.length;
     for (; o--; )
-      e.unshift(F.clone(n[o]));
-    let s = new _(e);
+      n.unshift(D.clone(e[o]));
+    let s = new G(n);
     return s.pivot.x = t.pivot.x, s.pivot.y = t.pivot.y, s.rotation = t.rotation, s;
   }
 }
@@ -553,34 +553,34 @@ class M {
    * @param {number} d
    * @returns {number}
    */
-  static lerp(t, n, e) {
-    return (1 - e) * t + e * n;
+  static lerp(t, e, n) {
+    return (1 - n) * t + n * e;
   }
   /**
    *
    * @param {Point} ptA
    * @param {Point} ptB
    */
-  static angleBetween(t, n) {
-    return Math.atan2(n.y - t.y, n.x - t.x);
+  static angleBetween(t, e) {
+    return Math.atan2(e.y - t.y, e.x - t.x);
   }
   /**
    *
    * @param {Segment} segA
    * @param {Segment} segB
    */
-  static sameAngle(t, n) {
-    let e = M.angleBetween(t.a, t.b), o = M.angleBetween(n.a, n.b);
-    return Math.abs(e - o) < ft;
+  static sameAngle(t, e) {
+    let n = M.angleBetween(t.a, t.b), o = M.angleBetween(e.a, e.b);
+    return Math.abs(n - o) < gt;
   }
   /**
    *
    * @param {Segment} segA
    * @param {Segment} segB
    */
-  static sameAngleRev(t, n) {
-    let e = M.angleBetween(t.a, t.b), o = M.angleBetween(n.b, n.a);
-    return Math.abs(e - o) < ft;
+  static sameAngleRev(t, e) {
+    let n = M.angleBetween(t.a, t.b), o = M.angleBetween(e.b, e.a);
+    return Math.abs(n - o) < gt;
   }
   /**
    *
@@ -589,10 +589,10 @@ class M {
    * @param {number} d
    * @returns {Point}
    */
-  static lerpPoints(t, n, e) {
+  static lerpPoints(t, e, n) {
     return {
-      x: M.lerp(t.x, n.x, e),
-      y: M.lerp(t.y, n.y, e)
+      x: M.lerp(t.x, e.x, n),
+      y: M.lerp(t.y, e.y, n)
     };
   }
   /**
@@ -600,26 +600,26 @@ class M {
    * @param {Point} pt the point to rotate in place
    * @param {number} deg angle in degrees
    */
-  static rotatePointDeg(t, n) {
-    M.rotatePoint(t, n * Math.PI / 180);
+  static rotatePointDeg(t, e) {
+    M.rotatePoint(t, e * Math.PI / 180);
   }
   /**
    *
    * @param {Point} pt
    * @param {*} rad
    */
-  static rotatePoint(t, n) {
-    const e = Math.cos(n), o = Math.sin(n), s = t.y, r = t.x;
-    t.y = e * s - o * r, t.x = o * s + e * r;
+  static rotatePoint(t, e) {
+    const n = Math.cos(e), o = Math.sin(e), s = t.y, c = t.x;
+    t.y = n * s - o * c, t.x = o * s + n * c;
   }
   /**
    *
    * @param {number} rad
    * @param  {...Point} points
    */
-  static rotatePoints(t, ...n) {
-    n.forEach((e) => {
-      M.rotatePoint(e, t);
+  static rotatePoints(t, ...e) {
+    e.forEach((n) => {
+      M.rotatePoint(n, t);
     });
   }
   /**
@@ -627,36 +627,36 @@ class M {
    * @param {number} deg
    * @param  {...Point} points
    */
-  static rotatePointsDeg(t, ...n) {
-    let e = t * Math.PI / 180;
-    n.forEach((o) => {
-      M.rotatePoint(o, e);
+  static rotatePointsDeg(t, ...e) {
+    let n = t * Math.PI / 180;
+    e.forEach((o) => {
+      M.rotatePoint(o, n);
     });
   }
   // Based on http://stackoverflow.com/a/12037737
-  static outerTangents(t, n, e, o) {
-    var s = e.x - t.x, r = e.y - t.y, h = Math.sqrt(s * s + r * r);
-    if (h <= Math.abs(o - n)) return [];
-    var a = Math.atan2(r, s), l = Math.acos((n - o) / h);
+  static outerTangents(t, e, n, o) {
+    var s = n.x - t.x, c = n.y - t.y, l = Math.sqrt(s * s + c * c);
+    if (l <= Math.abs(o - e)) return [];
+    var a = Math.atan2(c, s), h = Math.acos((e - o) / l);
     return [
-      new F(
+      new D(
         {
-          x: t.x + n * Math.cos(a + l),
-          y: t.y + n * Math.sin(a + l)
+          x: t.x + e * Math.cos(a + h),
+          y: t.y + e * Math.sin(a + h)
         },
         {
-          x: e.x + o * Math.cos(a + l),
-          y: e.y + o * Math.sin(a + l)
+          x: n.x + o * Math.cos(a + h),
+          y: n.y + o * Math.sin(a + h)
         }
       ),
-      new F(
+      new D(
         {
-          x: t.x + n * Math.cos(a - l),
-          y: t.y + n * Math.sin(a - l)
+          x: t.x + e * Math.cos(a - h),
+          y: t.y + e * Math.sin(a - h)
         },
         {
-          x: e.x + o * Math.cos(a - l),
-          y: e.y + o * Math.sin(a - l)
+          x: n.x + o * Math.cos(a - h),
+          y: n.y + o * Math.sin(a - h)
         }
       )
     ];
@@ -666,8 +666,8 @@ class M {
    * @param {Point} pt
    */
   static cartesian2Polar(t) {
-    const n = Math.sqrt(t.x * t.x + t.y * t.y), e = Math.atan2(t.y, t.x);
-    t.x = n, t.y = e;
+    const e = Math.sqrt(t.x * t.x + t.y * t.y), n = Math.atan2(t.y, t.x);
+    t.x = e, t.y = n;
   }
   /**
    *
@@ -675,8 +675,8 @@ class M {
    * @param {Point} ptB
    * @param {number} [scale]
    */
-  static pointsEqual(t, n, e = 1) {
-    return Math.round(t.x * 1e4 / e) == Math.round(n.x * 1e4 / e) && Math.round(t.y * 1e4 / e) == Math.round(n.y * 1e4 / e);
+  static pointsEqual(t, e, n = 1) {
+    return Math.round(t.x * 1e4 / n) == Math.round(e.x * 1e4 / n) && Math.round(t.y * 1e4 / n) == Math.round(e.y * 1e4 / n);
   }
   /**
    *
@@ -684,9 +684,9 @@ class M {
    * @param {Point} ptB
    * @returns {number}
    */
-  static distanceBetween(t, n) {
-    const e = n.x - t.x, o = n.y - t.y;
-    return Math.sqrt(e * e + o * o);
+  static distanceBetween(t, e) {
+    const n = e.x - t.x, o = e.y - t.y;
+    return Math.sqrt(n * n + o * o);
   }
   /**
    *
@@ -694,9 +694,9 @@ class M {
    * @param {Point} ptB
    * @returns {number}
    */
-  static distanceBetweenSquared(t, n) {
-    const e = n.x - t.x, o = n.y - t.y;
-    return e * e + o * o;
+  static distanceBetweenSquared(t, e) {
+    const n = e.x - t.x, o = e.y - t.y;
+    return n * n + o * o;
   }
   /**
    *
@@ -705,37 +705,37 @@ class M {
    * @param {number} numSegs
    * @returns {Point[]}
    */
-  static interpolatePoints(t, n, e) {
-    let o = [{ x: t.x, y: t.y }], s = 1 / e, r = (n.x - t.x) * s, h = (n.y - t.y) * s;
-    for (var a = 1; a < e; a++)
-      o.push(new k(t.x + r * a, t.y + h * a));
-    return o.push({ x: n.x, y: n.y }), o;
+  static interpolatePoints(t, e, n) {
+    let o = [{ x: t.x, y: t.y }], s = 1 / n, c = (e.x - t.x) * s, l = (e.y - t.y) * s;
+    for (var a = 1; a < n; a++)
+      o.push(new C(t.x + c * a, t.y + l * a));
+    return o.push({ x: e.x, y: e.y }), o;
   }
   /**
    *
    * @param  {...Point} pts
    */
   static averagePoints(...t) {
-    let n = new k(0, 0);
-    return t.forEach((e) => {
-      n.x += e.x, n.y += e.y;
-    }), n.x /= t.length, n.y /= t.length, n;
+    let e = new C(0, 0);
+    return t.forEach((n) => {
+      e.x += n.x, e.y += n.y;
+    }), e.x /= t.length, e.y /= t.length, e;
   }
   /**
    *
    * @param {Point} targetPt the point that will be added to
    * @param {Point} sourcePt the point to add to the target
    */
-  static addToPoint(t, n) {
-    t.x += n.x, t.y += n.y;
+  static addToPoint(t, e) {
+    t.x += e.x, t.y += e.y;
   }
   /**
    *
    * @param {Point} targetPt the point that will be subtracted from
    * @param {Point} sourcePt the point tosubtract from the target
    */
-  static subFromPoint(t, n) {
-    t.x -= n.x, t.y -= n.y;
+  static subFromPoint(t, e) {
+    t.x -= e.x, t.y -= e.y;
   }
   /**
    *
@@ -744,15 +744,15 @@ class M {
    * @param {number} delta
    * @returns {Point[]}
    */
-  static subdivideByDistance(t, n, e) {
-    if (e === 0)
-      return [t, n];
-    let o = [{ x: t.x, y: t.y }], s = M.distanceBetween(t, n), r = e / s, h = Math.floor(1 / r), a = s % e;
-    e += a / h, r = e / s;
-    let l = r, c = 1, u = (n.x - t.x) * r, f = (n.y - t.y) * r;
-    for (; l < 1; )
-      o.push(new k(t.x + u * c, t.y + f * c)), l += r, c++;
-    return o.push({ x: n.x, y: n.y }), o;
+  static subdivideByDistance(t, e, n) {
+    if (n === 0)
+      return [t, e];
+    let o = [{ x: t.x, y: t.y }], s = M.distanceBetween(t, e), c = n / s, l = Math.floor(1 / c), a = s % n;
+    n += a / l, c = n / s;
+    let h = c, r = 1, u = (e.x - t.x) * c, f = (e.y - t.y) * c;
+    for (; h < 1; )
+      o.push(new C(t.x + u * r, t.y + f * r)), h += c, r++;
+    return o.push({ x: e.x, y: e.y }), o;
   }
   /**
    *
@@ -760,8 +760,8 @@ class M {
    * @param {Segment} segB
    * @param {number} [scale]
    */
-  static segmentsConnected(t, n, e = 1) {
-    return M.pointsEqual(t.b, n.a, e) || M.pointsEqual(t.a, n.b, e);
+  static segmentsConnected(t, e, n = 1) {
+    return M.pointsEqual(t.b, e.a, n) || M.pointsEqual(t.a, e.b, n);
   }
   /**
    *
@@ -769,12 +769,12 @@ class M {
    * @returns {Point[]}
    */
   static segmentsToPoints(t) {
-    let n = t.reduce((o, s) => o.concat(s.a, s.b), []), e = n.length;
-    for (; e--; ) {
-      let o = n[e];
-      e > 0 && M.pointsEqual(o, n[e - 1]) && n.splice(e, 1);
+    let e = t.reduce((o, s) => o.concat(s.a, s.b), []), n = e.length;
+    for (; n--; ) {
+      let o = e[n];
+      n > 0 && M.pointsEqual(o, e[n - 1]) && e.splice(n, 1);
     }
-    return n;
+    return e;
   }
   /**
    *
@@ -782,10 +782,10 @@ class M {
    * @returns {number}
    */
   static polygonArea(t) {
-    let n = 0, e = t.length - 1;
+    let e = 0, n = t.length - 1;
     for (var o = 0; o < t.length; o++)
-      n += t[o].x * t[e].y, n -= t[e].x * t[o].y, e = o;
-    return n / 2;
+      e += t[o].x * t[n].y, e -= t[n].x * t[o].y, n = o;
+    return e / 2;
   }
   /**
    *
@@ -793,10 +793,10 @@ class M {
    * @returns {BoundingBox}
    */
   static pointsBoundingBox(t) {
-    const n = new rt(1e6, 1e6, -1e6, -1e6);
-    return t.forEach((e) => {
-      n.minX = Math.min(n.minX, e.x), n.minY = Math.min(n.minY, e.y), n.maxX = Math.max(n.maxX, e.x), n.maxY = Math.max(n.maxY, e.y);
-    }), n;
+    const e = new ct(1e6, 1e6, -1e6, -1e6);
+    return t.forEach((n) => {
+      e.minX = Math.min(e.minX, n.x), e.minY = Math.min(e.minY, n.y), e.maxX = Math.max(e.maxX, n.x), e.maxY = Math.max(e.maxY, n.y);
+    }), e;
   }
   /**
    *
@@ -804,10 +804,10 @@ class M {
    * @returns {BoundingBox}
    */
   static boundingBoxesBoundingBox(t) {
-    const n = new rt(1e6, 1e6, -1e6, -1e6);
-    return t.forEach((e) => {
-      n.minX = Math.min(n.minX, e.minX), n.minY = Math.min(n.minY, e.minY), n.maxX = Math.max(n.maxX, e.maxX), n.maxY = Math.max(n.maxY, e.maxY);
-    }), n;
+    const e = new ct(1e6, 1e6, -1e6, -1e6);
+    return t.forEach((n) => {
+      e.minX = Math.min(e.minX, n.minX), e.minY = Math.min(e.minY, n.minY), e.maxX = Math.max(e.maxX, n.maxX), e.maxY = Math.max(e.maxY, n.maxY);
+    }), e;
   }
   /**
    *
@@ -815,18 +815,18 @@ class M {
    * @returns {BoundingBox}
    */
   static segmentsBoundingBox(t) {
-    const n = [];
-    return t.forEach((e) => {
-      n.push(e.a), n.push(e.b);
-    }), M.pointsBoundingBox(n);
+    const e = [];
+    return t.forEach((n) => {
+      e.push(n.a), e.push(n.b);
+    }), M.pointsBoundingBox(e);
   }
   /**
    *
    * @param {BoundingBox} ab
    * @param {BoundingBox} bb
    */
-  static boundingBoxesIntersect(t, n) {
-    return t.maxX >= n.minX && t.maxY >= n.minY && t.minX <= n.maxX && t.minY <= n.maxY;
+  static boundingBoxesIntersect(t, e) {
+    return t.maxX >= e.minX && t.maxY >= e.minY && t.minX <= e.maxX && t.minY <= e.maxY;
   }
   /**
    *
@@ -842,8 +842,8 @@ class M {
    * @param {Point} p2
    * @param {Point} p3
    */
-  static ccw(t, n, e) {
-    return (e.y - t.y) * (n.x - t.x) > (n.y - t.y) * (e.x - t.x);
+  static ccw(t, e, n) {
+    return (n.y - t.y) * (e.x - t.x) > (e.y - t.y) * (n.x - t.x);
   }
   /**
    *
@@ -851,9 +851,9 @@ class M {
    * @param {Segment} segB
    * @returns {boolean}
    */
-  static segmentsIntersect(t, n) {
-    const e = M.ccw;
-    return e(t.a, n.a, n.b) != e(t.b, n.a, n.b) && e(t.a, t.b, n.a) != e(t.a, t.b, n.b);
+  static segmentsIntersect(t, e) {
+    const n = M.ccw;
+    return n(t.a, e.a, e.b) != n(t.b, e.a, e.b) && n(t.a, t.b, e.a) != n(t.a, t.b, e.b);
   }
   /**
    *
@@ -861,12 +861,12 @@ class M {
    * @param {Segment} segB
    * @returns {Point}
    */
-  static segmentSegmentIntersect(t, n, e = !1) {
-    const o = t.a.x, s = t.a.y, r = t.b.x, h = t.b.y, a = n.a.x, l = n.a.y, c = n.b.x, u = n.b.y, f = r - o, d = h - s, m = c - a, p = u - l, w = (-d * (o - a) + f * (s - l)) / (-m * d + f * p), y = (m * (s - l) - p * (o - a)) / (-m * d + f * p);
-    if (w >= 0 && w <= 1 && y >= 0 && y <= 1) {
-      const x = o + y * f, g = s + y * d;
-      let b = { x, y: g };
-      return e && (M.pointsEqual(b, n.a) || M.pointsEqual(b, n.b) || M.pointsEqual(b, t.a) || M.pointsEqual(b, t.b)) ? void 0 : b;
+  static segmentSegmentIntersect(t, e, n = !1) {
+    const o = t.a.x, s = t.a.y, c = t.b.x, l = t.b.y, a = e.a.x, h = e.a.y, r = e.b.x, u = e.b.y, f = c - o, d = l - s, y = r - a, m = u - h, b = (-d * (o - a) + f * (s - h)) / (-y * d + f * m), p = (y * (s - h) - m * (o - a)) / (-y * d + f * m);
+    if (b >= 0 && b <= 1 && p >= 0 && p <= 1) {
+      const x = o + p * f, g = s + p * d;
+      let w = { x, y: g };
+      return n && (M.pointsEqual(w, e.a) || M.pointsEqual(w, e.b) || M.pointsEqual(w, t.a) || M.pointsEqual(w, t.b)) ? void 0 : w;
     }
     return null;
   }
@@ -876,13 +876,13 @@ class M {
    * @param {Segment[]} segs
    * @returns {Point[]}
    */
-  static segmentSegmentsIntersections(t, n, e = !1) {
+  static segmentSegmentsIntersections(t, e, n = !1) {
     let o = [];
-    return n.forEach((s) => {
+    return e.forEach((s) => {
       if (s == t)
         return;
-      let r = M.segmentSegmentIntersect(t, s, e);
-      r && o.push(r);
+      let c = M.segmentSegmentIntersect(t, s, n);
+      c && o.push(c);
     }), o;
   }
   /**
@@ -890,16 +890,16 @@ class M {
    * @param {Point} ptA
    * @param {Point} ptB
    */
-  static dot(t, n) {
-    return t.x * n.x + t.y * n.y;
+  static dot(t, e) {
+    return t.x * e.x + t.y * e.y;
   }
   /**
    *
    * @param {Point} ptA
    * @param {Point} ptB
    */
-  static cross(t, n) {
-    return t.x * n.y - t.y * n.x;
+  static cross(t, e) {
+    return t.x * e.y - t.y * e.x;
   }
   /**
    * 
@@ -907,24 +907,24 @@ class M {
    * @param {Point} ptA 
    * @param {Point} ptB 
    */
-  static lineSide(t, n, e) {
-    return Math.round(((e.x - n.x) * (t.y - n.y) - (e.y - n.y) * (t.x - n.x)) * 100) / 100;
+  static lineSide(t, e, n) {
+    return Math.round(((n.x - e.x) * (t.y - e.y) - (n.y - e.y) * (t.x - e.x)) * 100) / 100;
   }
   /**
    *
    * @param {Point} ptA
    * @param {Point} ptB
    */
-  static sub(t, n) {
-    return new k(t.x - n.x, t.y - n.y);
+  static sub(t, e) {
+    return new C(t.x - e.x, t.y - e.y);
   }
   /**
    *
    * @param {Point} ptA
    * @param {Point} ptB
    */
-  static add(t, n) {
-    return new k(t.x + n.x, t.y + n.y);
+  static add(t, e) {
+    return new C(t.x + e.x, t.y + e.y);
   }
   /**
    *
@@ -932,23 +932,23 @@ class M {
    * @param {Segment} seg
    * @returns {Point}
    */
-  static closestPtPointSegment(t, n) {
-    var e = M.sub(n.b, n.a), o = M.sub(t, n.a), s = M.dot(o, e);
+  static closestPtPointSegment(t, e) {
+    var n = M.sub(e.b, e.a), o = M.sub(t, e.a), s = M.dot(o, n);
     if (s < 0)
-      t = n.a;
+      t = e.a;
     else {
-      var r = M.dot(e, e);
-      s >= r ? t = n.b : (s /= r, o.x = n.a.x + s * e.x, o.y = n.a.y + s * e.y, t = o);
+      var c = M.dot(n, n);
+      s >= c ? t = e.b : (s /= c, o.x = e.a.x + s * n.x, o.y = e.a.y + s * n.y, t = o);
     }
-    return k.clone(t);
+    return C.clone(t);
   }
   /**
    *
    * @param {Point} pt
    * @param {Segment} seg
    */
-  static distancePointSegment(t, n) {
-    return M.distanceBetween(t, M.closestPtPointSegment(t, n));
+  static distancePointSegment(t, e) {
+    return M.distanceBetween(t, M.closestPtPointSegment(t, e));
   }
   /**
    *
@@ -956,8 +956,8 @@ class M {
    * @param {*} boundingBox
    * @returns {boolean}
    */
-  static pointWithinBoundingBox(t, n) {
-    return t.x >= n.minX && t.y >= n.minY && t.x <= n.maxX && t.y <= n.maxY;
+  static pointWithinBoundingBox(t, e) {
+    return t.x >= e.minX && t.y >= e.minY && t.x <= e.maxX && t.y <= e.maxY;
   }
   /**
    *
@@ -965,12 +965,12 @@ class M {
    * @param {Segment[]} polySegs
    * @returns {boolean}
    */
-  static pointWithinPolygon(t, n, e) {
-    const o = M.segmentsBoundingBox(n);
+  static pointWithinPolygon(t, e, n) {
+    const o = M.segmentsBoundingBox(e);
     if (!this.pointWithinBoundingBox(t, o))
       return !1;
-    let s = new k(1e5, 1e5), r = new F(s, t), h = M.segmentSegmentsIntersections(r, n);
-    return h.length % 2 != 0 && e && M.pointsEqual(t, h[0]) ? !1 : h.length % 2 != 0;
+    let s = new C(1e5, 1e5), c = new D(s, t), l = M.segmentSegmentsIntersections(c, e);
+    return l.length % 2 != 0 && n && M.pointsEqual(t, l[0]) ? !1 : l.length % 2 != 0;
   }
   /**
    *
@@ -978,12 +978,12 @@ class M {
    * @param {Segment[]} polySegs
    * @returns {boolean}
    */
-  static segmentWithinPolygon(t, n) {
-    let e = this.pointWithinPolygon(t.a, n, !1), o = this.pointWithinPolygon(t.b, n, !1), s = this.pointWithinPolygon(t.a, n, !0), r = this.pointWithinPolygon(t.b, n, !0);
-    return s && r || s && o || r && e;
+  static segmentWithinPolygon(t, e) {
+    let n = this.pointWithinPolygon(t.a, e, !1), o = this.pointWithinPolygon(t.b, e, !1), s = this.pointWithinPolygon(t.a, e, !0), c = this.pointWithinPolygon(t.b, e, !0);
+    return s && c || s && o || c && n;
   }
-  static sign(t, n, e) {
-    return (t.x - e.x) * (n.y - e.y) - (n.x - e.x) * (t.y - e.y);
+  static sign(t, e, n) {
+    return (t.x - n.x) * (e.y - n.y) - (e.x - n.x) * (t.y - n.y);
   }
   /**
    *
@@ -993,13 +993,13 @@ class M {
    * @param {Point} v3
    * @returns {boolean}
    */
-  static pointWithinTriangle(t, n, e, o, s) {
-    const r = M.sign(t, n, e), h = M.sign(t, e, o), a = M.sign(t, o, n), l = r < 0 || h < 0 || a < 0, c = r > 0 || h > 0 || a > 0;
-    if (!(l && c) && s) {
-      let u = { a: n, b: e, tags: null };
-      if (M.distancePointSegment(t, u) < 1 || (u.a = e, u.b = o, M.distancePointSegment(t, u) < 1) || (u.a = o, u.b = n, M.distancePointSegment(t, u) < 1)) return !1;
+  static pointWithinTriangle(t, e, n, o, s) {
+    const c = M.sign(t, e, n), l = M.sign(t, n, o), a = M.sign(t, o, e), h = c < 0 || l < 0 || a < 0, r = c > 0 || l > 0 || a > 0;
+    if (!(h && r) && s) {
+      let u = { a: e, b: n, tags: null };
+      if (M.distancePointSegment(t, u) < 1 || (u.a = n, u.b = o, M.distancePointSegment(t, u) < 1) || (u.a = o, u.b = e, M.distancePointSegment(t, u) < 1)) return !1;
     }
-    return !(l && c);
+    return !(h && r);
   }
   /**
    *
@@ -1009,9 +1009,9 @@ class M {
    * @param {Point} v3
    * @returns {boolean}
    */
-  static segmentWithinTriangle(t, n, e, o) {
-    let s = this.pointWithinTriangle(t.a, n, e, o, !1), r = this.pointWithinTriangle(t.b, n, e, o, !1), h = this.pointWithinTriangle(t.a, n, e, o, !0), a = this.pointWithinTriangle(t.b, n, e, o, !0);
-    return M.averagePoints(t.a, t.b), h && a || h && r || a && s || s && r;
+  static segmentWithinTriangle(t, e, n, o) {
+    let s = this.pointWithinTriangle(t.a, e, n, o, !1), c = this.pointWithinTriangle(t.b, e, n, o, !1), l = this.pointWithinTriangle(t.a, e, n, o, !0), a = this.pointWithinTriangle(t.b, e, n, o, !0);
+    return M.averagePoints(t.a, t.b), l && a || l && c || a && s || s && c;
   }
   /**
    *
@@ -1019,10 +1019,10 @@ class M {
    * @returns {Segment[]}
    */
   static pointsToClosedPolySegments(...t) {
-    let n = [];
-    for (let e = 0; e < t.length; e++)
-      n.push(new F(t[e], e < t.length - 1 ? t[e + 1] : t[0]));
-    return n;
+    let e = [];
+    for (let n = 0; n < t.length; n++)
+      e.push(new D(t[n], n < t.length - 1 ? t[n + 1] : t[0]));
+    return e;
   }
   /**
    *
@@ -1030,14 +1030,14 @@ class M {
    * @param {Segment[]} polySegsB
    * @returns {boolean}
    */
-  static polygonWithinPolygon(t, n) {
-    const e = M.segmentsBoundingBox(t), o = M.segmentsBoundingBox(n);
-    if (!M.boundingBoxesIntersect(e, o))
+  static polygonWithinPolygon(t, e) {
+    const n = M.segmentsBoundingBox(t), o = M.segmentsBoundingBox(e);
+    if (!M.boundingBoxesIntersect(n, o))
       return !1;
-    new k(o.minX - 100, o.minY - 100);
+    new C(o.minX - 100, o.minY - 100);
     for (let s = 0; s < t.length; s++) {
-      let r = t[s];
-      if (M.segmentSegmentsIntersections(r, n).length % 2 == 0)
+      let c = t[s];
+      if (M.segmentSegmentsIntersections(c, e).length % 2 == 0)
         return !1;
     }
     return !0;
@@ -1049,18 +1049,18 @@ class M {
    * @param {Point} ptC
    * @param {number} iterations
    */
-  static splinePoints(t, n, e, o = 0) {
-    let s = (h) => {
-      let a = [h[0]];
-      for (let l = 0; l < h.length - 1; l++) {
-        let c = new k(0, 0);
-        l + 1 < h.length * 0.4 ? (c.x = (h[l].x * 40 + h[l + 1].x * 60) * 0.01, c.y = (h[l].y * 40 + h[l + 1].y * 60) * 0.01) : l + 1 > h.length * 0.6 ? (c.x = (h[l].x * 60 + h[l + 1].x * 40) * 0.01, c.y = (h[l].y * 60 + h[l + 1].y * 40) * 0.01) : (c.x = (h[l].x + h[l + 1].x) * 0.5, c.y = (h[l].y + h[l + 1].y) * 0.5), a.push(c);
+  static splinePoints(t, e, n, o = 0) {
+    let s = (l) => {
+      let a = [l[0]];
+      for (let h = 0; h < l.length - 1; h++) {
+        let r = new C(0, 0);
+        h + 1 < l.length * 0.4 ? (r.x = (l[h].x * 40 + l[h + 1].x * 60) * 0.01, r.y = (l[h].y * 40 + l[h + 1].y * 60) * 0.01) : h + 1 > l.length * 0.6 ? (r.x = (l[h].x * 60 + l[h + 1].x * 40) * 0.01, r.y = (l[h].y * 60 + l[h + 1].y * 40) * 0.01) : (r.x = (l[h].x + l[h + 1].x) * 0.5, r.y = (l[h].y + l[h + 1].y) * 0.5), a.push(r);
       }
-      return a.push(h[h.length - 1]), a;
-    }, r = [t, n, e];
-    for (let h = 0; h < o; h++)
-      r = s(r);
-    return r;
+      return a.push(l[l.length - 1]), a;
+    }, c = [t, e, n];
+    for (let l = 0; l < o; l++)
+      c = s(c);
+    return c;
   }
 }
 class Z {
@@ -1069,59 +1069,59 @@ class Z {
    * @property {boolean} splitTeeIntersections
    * @returns {{ originalPts: Object.<string, Point>, pts: string[], cxs: Object.<string,string[]> }}
    */
-  static getSegsAndConnections(t, n = !1, e = !1) {
-    let o = {}, s = [], r = {}, h = (a) => {
-      let l = `${Math.round(a.x * 1)}|${Math.round(a.y * 1)}`;
-      return r[l] = a, l;
+  static getSegsAndConnections(t, e = !1, n = !1) {
+    let o = {}, s = [], c = {}, l = (a) => {
+      let h = `${Math.round(a.x * 1)}|${Math.round(a.y * 1)}`;
+      return c[h] = a, h;
     };
-    if (n) {
-      let a = t.reduce((u, f) => u.concat(f.a, f.b), []), l = a.length;
-      for (; l--; ) {
-        let u = a[l], f = l;
+    if (e) {
+      let a = t.reduce((u, f) => u.concat(f.a, f.b), []), h = a.length;
+      for (; h--; ) {
+        let u = a[h], f = h;
         for (; f--; ) {
           let d = a[f];
           if (M.pointsEqual(u, d)) {
-            a.splice(l, 1);
+            a.splice(h, 1);
             break;
           }
         }
       }
-      let c = t.length;
-      for (; c--; ) {
-        let u = t[c], f = [];
+      let r = t.length;
+      for (; r--; ) {
+        let u = t[r], f = [];
         if (a.forEach((d) => {
           M.distancePointSegment(d, u) < 0.1 && !M.pointsEqual(d, u.a) && !M.pointsEqual(d, u.b) && f.push(d);
         }), f.length) {
-          f.sort((p, w) => {
-            const y = M.distanceBetweenSquared(p, u.a), x = M.distanceBetweenSquared(w, u.a);
-            return y < x ? -1 : y > x ? 1 : 0;
+          f.sort((m, b) => {
+            const p = M.distanceBetweenSquared(m, u.a), x = M.distanceBetweenSquared(b, u.a);
+            return p < x ? -1 : p > x ? 1 : 0;
           });
           const d = [];
-          let m = u.a;
-          for (let p = 0; p < f.length; p++) {
-            let w = f[p];
-            d.push(new F(m, w)), m = w;
+          let y = u.a;
+          for (let m = 0; m < f.length; m++) {
+            let b = f[m];
+            d.push(new D(y, b)), y = b;
           }
-          d.push(new F(m, u.b)), t.splice(c, 1, ...d);
+          d.push(new D(y, u.b)), t.splice(r, 1, ...d);
         }
       }
     }
-    if (e) {
+    if (n) {
       let a = t.length;
       for (; a--; ) {
-        let l = a, c = !1;
-        for (; l--; ) {
-          let u = t[a], f = t[l], d = M.segmentSegmentIntersect(u, f, !0);
-          d && (c = !0, t.splice(a, 1, new F(k.clone(u.a), k.clone(d)), new F(k.clone(d), k.clone(u.b))), t.splice(l, 1, new F(k.clone(f.a), k.clone(d)), new F(k.clone(d), k.clone(f.b))));
+        let h = a, r = !1;
+        for (; h--; ) {
+          let u = t[a], f = t[h], d = M.segmentSegmentIntersect(u, f, !0);
+          d && (r = !0, t.splice(a, 1, new D(C.clone(u.a), C.clone(d)), new D(C.clone(d), C.clone(u.b))), t.splice(h, 1, new D(C.clone(f.a), C.clone(d)), new D(C.clone(d), C.clone(f.b))));
         }
-        c && (a = t.length);
+        r && (a = t.length);
       }
     }
     return t.forEach((a) => {
-      let l = h(a.a), c = h(a.b);
-      o[l] || (o[l] = []), o[c] || (o[c] = []), o[l].indexOf(c) === -1 && o[l].push(c), o[c].indexOf(l) === -1 && o[c].push(l), s.indexOf(l) === -1 && s.push(l), s.indexOf(c) === -1 && s.push(c);
+      let h = l(a.a), r = l(a.b);
+      o[h] || (o[h] = []), o[r] || (o[r] = []), o[h].indexOf(r) === -1 && o[h].push(r), o[r].indexOf(h) === -1 && o[r].push(h), s.indexOf(h) === -1 && s.push(h), s.indexOf(r) === -1 && s.push(r);
     }), {
-      originalPts: r,
+      originalPts: c,
       pts: s,
       cxs: o
     };
@@ -1131,18 +1131,18 @@ class Z {
    * @property {boolean} splitTeeIntersections
    * @returns {Segment[]}
    */
-  static pathOrder(t, n = !1, e = !1) {
-    let o = [], { originalPts: s, pts: r, cxs: h } = Z.getSegsAndConnections(t, n, e), a = (c) => s[c], l = (c, u) => h[c].length > h[u].length ? 1 : h[c].length < h[u].length ? -1 : 0;
-    for (r.sort(l); r.length; ) {
-      r.sort(l);
-      let c = r.shift();
-      for (; c; )
-        if (h[c].length) {
-          h[c].sort(l);
-          let u = h[c].shift(), f = h[u].indexOf(c);
-          f !== -1 && h[u].splice(f, 1), o.push(new F(a(c), a(u))), h[c].length && r.unshift(c), c = u;
+  static pathOrder(t, e = !1, n = !1) {
+    let o = [], { originalPts: s, pts: c, cxs: l } = Z.getSegsAndConnections(t, e, n), a = (r) => s[r], h = (r, u) => l[r].length > l[u].length ? 1 : l[r].length < l[u].length ? -1 : 0;
+    for (c.sort(h); c.length; ) {
+      c.sort(h);
+      let r = c.shift();
+      for (; r; )
+        if (l[r].length) {
+          l[r].sort(h);
+          let u = l[r].shift(), f = l[u].indexOf(r);
+          f !== -1 && l[u].splice(f, 1), o.push(new D(a(r), a(u))), l[r].length && c.unshift(r), r = u;
         } else
-          c = null;
+          r = null;
     }
     return o;
   }
@@ -1151,18 +1151,18 @@ class Z {
    * @property {number} offset
    * @returns {Point[]}
    */
-  static getEndingSegmentPoints(t, n = 0) {
+  static getEndingSegmentPoints(t, e = 0) {
     t = t.concat(), t = Z.pathOrder(t, !0, !0);
-    let { originalPts: e, pts: o, cxs: s } = Z.getSegsAndConnections(t, !0), r = (l) => e[l];
-    const h = o.filter((l) => s[l].length === 1), a = [];
-    return h.forEach((l) => {
-      const c = k.clone(r(l));
-      if (n === 0) {
-        a.push(c);
+    let { originalPts: n, pts: o, cxs: s } = Z.getSegsAndConnections(t, !0), c = (h) => n[h];
+    const l = o.filter((h) => s[h].length === 1), a = [];
+    return l.forEach((h) => {
+      const r = C.clone(c(h));
+      if (e === 0) {
+        a.push(r);
         return;
       }
-      const u = r(s[l]), f = M.angleBetween(u, c), d = new k(0, n);
-      M.rotatePoint(d, Math.PI * 0.5 - f), M.addToPoint(c, d), a.push(c);
+      const u = c(s[h]), f = M.angleBetween(u, r), d = new C(0, e);
+      M.rotatePoint(d, Math.PI * 0.5 - f), M.addToPoint(r, d), a.push(r);
     }), a;
   }
   /**
@@ -1170,72 +1170,72 @@ class Z {
    * @property {number} searchMultiplier multiple of typical segmentation distance to search for flood-fill points
    * @returns {Point[][]}
    */
-  static getFills(t, n = 5) {
+  static getFills(t, e = 5) {
     t = t.concat();
-    let { originalPts: e, cxs: o } = Z.getSegsAndConnections(t, !0, !0), s = (x) => {
+    let { originalPts: n, cxs: o } = Z.getSegsAndConnections(t, !0, !0), s = (x) => {
       let g = `${Math.round(x.x * 1)}|${Math.round(x.y * 1)}`;
-      return e[g] = x, g;
-    }, r = [], h = [], a = 1e5, l = 1e5, c = -1e5, u = -1e5, f = 1e5, d = 1e5, m = [];
-    for (let x in e) {
-      let g = e[x];
-      m.push(g), a = Math.min(a, g.x), l = Math.min(l, g.y), c = Math.max(c, g.x), u = Math.max(u, g.y);
+      return n[g] = x, g;
+    }, c = [], l = [], a = 1e5, h = 1e5, r = -1e5, u = -1e5, f = 1e5, d = 1e5, y = [];
+    for (let x in n) {
+      let g = n[x];
+      y.push(g), a = Math.min(a, g.x), h = Math.min(h, g.y), r = Math.max(r, g.x), u = Math.max(u, g.y);
     }
-    m.sort((x, g) => x.x < g.x ? -1 : x.x > g.x ? 1 : 0), m.forEach((x, g) => {
+    y.sort((x, g) => x.x < g.x ? -1 : x.x > g.x ? 1 : 0), y.forEach((x, g) => {
       if (g > 0) {
-        let b = m[g - 1], S = Math.round(Math.abs(x.x - b.x));
+        let w = y[g - 1], S = Math.round(Math.abs(x.x - w.x));
         S > 1 && (f = Math.min(f, S));
       }
-    }), m.sort((x, g) => x.y < g.y ? -1 : x.y > g.y ? 1 : 0), m.forEach((x, g) => {
+    }), y.sort((x, g) => x.y < g.y ? -1 : x.y > g.y ? 1 : 0), y.forEach((x, g) => {
       if (g > 0) {
-        let b = m[g - 1], S = Math.round(Math.abs(x.y - b.y));
+        let w = y[g - 1], S = Math.round(Math.abs(x.y - w.y));
         S > 1 && (d = Math.min(d, S));
       }
     });
-    let p = f * 0.5, w = d * 0.5, y = [];
-    for (let x = l; x < u; x += d)
-      for (let g = a; g < c; g += f)
-        y.push(new k(g + p, x + w));
-    return y.forEach((x) => {
+    let m = f * 0.5, b = d * 0.5, p = [];
+    for (let x = h; x < u; x += d)
+      for (let g = a; g < r; g += f)
+        p.push(new C(g + m, x + b));
+    return p.forEach((x) => {
       let g = [];
-      if (m.forEach((P) => {
-        let v = M.distanceBetween(P, x);
-        if (v < Math.max(f, d) * n) {
-          let I = M.angleBetween(P, x);
+      if (y.forEach((v) => {
+        let E = M.distanceBetween(v, x);
+        if (E < Math.max(f, d) * e) {
+          let P = M.angleBetween(v, x);
           g.push({
-            pt: P,
-            dist: v,
-            ang: I
+            pt: v,
+            dist: E,
+            ang: P
           });
         }
       }), g.length < 4)
         return;
-      let b = g.length;
-      for (; b--; ) {
-        let P = g[b].pt, v = new F(x, P);
-        M.segmentSegmentsIntersections(v, t, !0).length > 0 && g.splice(b, 1);
+      let w = g.length;
+      for (; w--; ) {
+        let v = g[w].pt, E = new D(x, v);
+        M.segmentSegmentsIntersections(E, t, !0).length > 0 && g.splice(w, 1);
       }
-      for (g.sort((P, v) => P.ang < v.ang ? -1 : P.ang > v.ang ? 1 : 0), b = g.length; b--; ) {
-        let P = g[b].pt, v = s(P), I = g.length, E = !1;
-        for (; I--; ) {
-          if (b === I)
+      for (g.sort((v, E) => v.ang < E.ang ? -1 : v.ang > E.ang ? 1 : 0), w = g.length; w--; ) {
+        let v = g[w].pt, E = s(v), P = g.length, k = !1;
+        for (; P--; ) {
+          if (w === P)
             continue;
-          let Y = g[I].pt, z = s(Y);
-          if (o[v].indexOf(z) === -1) {
-            E = !0;
+          let O = g[P].pt, F = s(O);
+          if (o[E].indexOf(F) === -1) {
+            k = !0;
             break;
           }
         }
-        E || g.splice(b, 1);
+        k || g.splice(w, 1);
       }
       let S = !0;
-      if (g.forEach((P, v) => {
-        let I = g[(v + 1) % g.length], E = s(P.pt), Y = s(I.pt);
-        o[E].indexOf(Y) === -1 && (S = !1);
+      if (g.forEach((v, E) => {
+        let P = g[(E + 1) % g.length], k = s(v.pt), O = s(P.pt);
+        o[k].indexOf(O) === -1 && (S = !1);
       }), S) {
-        let P = g.map((E) => E.pt), v = M.averagePoints(...P), I = s(v);
-        r.indexOf(I) === -1 && (r.push(I), h.push(P));
+        let v = g.map((k) => k.pt), E = M.averagePoints(...v), P = s(E);
+        c.indexOf(P) === -1 && (c.push(P), l.push(v));
       }
-    }), h;
+    }), l;
   }
 }
 class tt {
@@ -1249,9 +1249,9 @@ class tt {
    * @param {boolean} [splitTeeIntersections]
    * @returns {Segments}
    */
-  static segmentCollections(t, n = !1, e = !0, o = 1, s = !1, r = !1, h = !1) {
-    let a = t.reduce((l, c) => l.concat(c.toSegments()), []);
-    return tt.segments(a, n, e, o, s, r, h);
+  static segmentCollections(t, e = !1, n = !0, o = 1, s = !1, c = !1, l = !1) {
+    let a = t.reduce((h, r) => h.concat(r.toSegments()), []);
+    return tt.segments(a, e, n, o, s, c, l);
   }
   /**
    *
@@ -1259,9 +1259,9 @@ class tt {
    * @param {boolean} [splitTeeIntersections]
    * @returns {Segments}
    */
-  static segmentCollectionsPathOrder(t, n = !1, e = !1) {
-    let o = t.reduce((s, r) => s.concat(r.toSegments()), []);
-    return new _(Z.pathOrder(o, n, e));
+  static segmentCollectionsPathOrder(t, e = !1, n = !1) {
+    let o = t.reduce((s, c) => s.concat(c.toSegments()), []);
+    return new G(Z.pathOrder(o, e, n));
   }
   /**
    *
@@ -1273,89 +1273,89 @@ class tt {
    * @param {boolean} [splitTeeIntersections]
    * @returns {Segments}
    */
-  static segments(t, n = !1, e = !0, o = 1, s = !1, r = !1, h = !1) {
-    return t = tt._segments(t, n, e, o), s && (t = Z.pathOrder(t, r, h)), new _(t);
+  static segments(t, e = !1, n = !0, o = 1, s = !1, c = !1, l = !1) {
+    return t = tt._segments(t, e, n, o), s && (t = Z.pathOrder(t, c, l)), new G(t);
   }
   /**
    * JS fallback for segment optimization  
    * @private
    */
-  static _segments(t, n, e, o) {
+  static _segments(t, e, n, o) {
     const s = t;
     for (t = []; s.length; ) {
-      let h = s.shift(), a = t.length, l = !1;
+      let l = s.shift(), a = t.length, h = !1;
       for (; a--; ) {
-        const c = t[a];
-        if (F.isEqual(h, c)) {
-          l = !0;
+        const r = t[a];
+        if (D.isEqual(l, r)) {
+          h = !0;
           break;
         }
       }
-      l || t.push(h);
+      h || t.push(l);
     }
-    if (!n)
-      for (let h = 0; h < 3; h++) {
+    if (!e)
+      for (let l = 0; l < 3; l++) {
         let a = t.length;
         for (; a--; ) {
-          let l = t[a], c, u, f, d, m;
-          for (let p = a - 1; p >= 0; p--) {
-            let w = t[p], y = !1, x = !1;
-            if (M.sameAngle(l, w) ? (y = !0, c = k.clone(l.a), u = k.clone(l.b), f = k.clone(w.a), d = k.clone(w.b)) : M.sameAngleRev(l, w) && (y = x = !0, c = k.clone(l.b), u = k.clone(l.a), f = k.clone(w.a), d = k.clone(w.b)), y && (m = M.angleBetween(c, u), M.rotatePoints(m, c, u, f, d), Math.abs(c.y - f.y) < 0.1 && u.x >= f.x - 1e-4 && c.x <= d.x + 1e-4)) {
-              c.x < f.x && (x ? w.a = l.b : w.a = l.a), u.x > d.x && (x ? w.b = l.a : w.b = l.b), t.splice(a, 1);
+          let h = t[a], r, u, f, d, y;
+          for (let m = a - 1; m >= 0; m--) {
+            let b = t[m], p = !1, x = !1;
+            if (M.sameAngle(h, b) ? (p = !0, r = C.clone(h.a), u = C.clone(h.b), f = C.clone(b.a), d = C.clone(b.b)) : M.sameAngleRev(h, b) && (p = x = !0, r = C.clone(h.b), u = C.clone(h.a), f = C.clone(b.a), d = C.clone(b.b)), p && (y = M.angleBetween(r, u), M.rotatePoints(y, r, u, f, d), Math.abs(r.y - f.y) < 0.1 && u.x >= f.x - 1e-4 && r.x <= d.x + 1e-4)) {
+              r.x < f.x && (x ? b.a = h.b : b.a = h.a), u.x > d.x && (x ? b.b = h.a : b.b = h.b), t.splice(a, 1);
               break;
             }
           }
         }
       }
-    let r = t.length;
-    for (; r--; ) {
-      let h = t[r];
-      if (!h) {
-        t.splice(r, 1);
+    let c = t.length;
+    for (; c--; ) {
+      let l = t[c];
+      if (!l) {
+        t.splice(c, 1);
         continue;
       }
-      if (e && M.distanceBetween(h.a, h.b) < o) {
-        t.splice(r, 1);
+      if (n && M.distanceBetween(l.a, l.b) < o) {
+        t.splice(c, 1);
         continue;
       }
     }
     return console.log(`[JS] Optimize: ${s.length + t.length} -> ${t.length} segments`), t;
   }
 }
-function Jt(i, t) {
-  const n = i.geometry, e = n.attributes.position, o = n.index;
-  if (!e) return [];
-  const s = /* @__PURE__ */ new Map(), r = 1e3, h = (u, f) => {
-    const d = Math.round(u.x * r), m = Math.round(u.y * r), p = Math.round(u.z * r), w = Math.round(f.x * r), y = Math.round(f.y * r), x = Math.round(f.z * r), g = `${d},${m},${p}`, b = `${w},${y},${x}`;
-    return g < b ? `${g}|${b}` : `${b}|${g}`;
+function bt(i, t) {
+  const e = i.geometry, n = e.attributes.position, o = e.index;
+  if (!n) return [];
+  const s = /* @__PURE__ */ new Map(), c = 1e3, l = (u, f) => {
+    const d = Math.round(u.x * c), y = Math.round(u.y * c), m = Math.round(u.z * c), b = Math.round(f.x * c), p = Math.round(f.y * c), x = Math.round(f.z * c), g = `${d},${y},${m}`, w = `${b},${p},${x}`;
+    return g < w ? `${g}|${w}` : `${w}|${g}`;
   }, a = (u) => new $(
-    e.getX(u),
-    e.getY(u),
-    e.getZ(u)
-  ).applyMatrix4(i.matrixWorld), l = (u, f, d) => {
-    const m = new $().subVectors(f, u), p = new $().subVectors(d, u);
-    return new $().crossVectors(m, p).normalize();
-  }, c = o ? o.count / 3 : e.count / 3;
-  for (let u = 0; u < c; u++) {
-    let f, d, m;
-    o ? (f = o.getX(u * 3), d = o.getX(u * 3 + 1), m = o.getX(u * 3 + 2)) : (f = u * 3, d = u * 3 + 1, m = u * 3 + 2);
-    const p = a(f), w = a(d), y = a(m), x = l(p, w, y), g = new $().addVectors(p, w).add(y).divideScalar(3), b = new $().subVectors(t, g);
-    if (x.dot(b) <= 0)
+    n.getX(u),
+    n.getY(u),
+    n.getZ(u)
+  ).applyMatrix4(i.matrixWorld), h = (u, f, d) => {
+    const y = new $().subVectors(f, u), m = new $().subVectors(d, u);
+    return new $().crossVectors(y, m).normalize();
+  }, r = o ? o.count / 3 : n.count / 3;
+  for (let u = 0; u < r; u++) {
+    let f, d, y;
+    o ? (f = o.getX(u * 3), d = o.getX(u * 3 + 1), y = o.getX(u * 3 + 2)) : (f = u * 3, d = u * 3 + 1, y = u * 3 + 2);
+    const m = a(f), b = a(d), p = a(y), x = h(m, b, p), g = new $().addVectors(m, b).add(p).divideScalar(3), w = new $().subVectors(t, g);
+    if (x.dot(w) <= 0)
       continue;
     const S = [
-      [p, w],
-      [w, y],
-      [y, p]
+      [m, b],
+      [b, p],
+      [p, m]
     ];
-    for (const [P, v] of S) {
-      const I = h(P, v);
-      if (s.has(I)) {
-        const E = s.get(I);
-        E && !E.normal2 && (E.normal2 = x.clone(), E.faceIdx2 = u);
+    for (const [v, E] of S) {
+      const P = l(v, E);
+      if (s.has(P)) {
+        const k = s.get(P);
+        k && !k.normal2 && (k.normal2 = x.clone(), k.faceIdx2 = u);
       } else
-        s.set(I, {
-          a: P.clone(),
-          b: v.clone(),
+        s.set(P, {
+          a: v.clone(),
+          b: E.clone(),
           normal1: x.clone(),
           faceIdx1: u,
           mesh: i
@@ -1364,38 +1364,38 @@ function Jt(i, t) {
   }
   return Array.from(s.values());
 }
-function Zt(i, t) {
-  return i.filter((n) => {
-    const e = new $().addVectors(n.a, n.b).multiplyScalar(0.5), o = new $().subVectors(t, e).normalize(), s = n.normal1.dot(o) > 0;
-    if (!n.normal2)
+function wt(i, t) {
+  return i.filter((e) => {
+    const n = new $().addVectors(e.a, e.b).multiplyScalar(0.5), o = new $().subVectors(t, n).normalize(), s = e.normal1.dot(o) > 0;
+    if (!e.normal2)
       return !0;
-    const r = n.normal2.dot(o) > 0;
-    return s || r;
+    const c = e.normal2.dot(o) > 0;
+    return s || c;
   });
 }
-function Kt(i, t, n = 0.99) {
-  const e = [], o = [];
+function Mt(i, t, e = 0.99) {
+  const n = [], o = [];
   for (const s of i) {
-    const r = new $().addVectors(s.a, s.b).multiplyScalar(0.5), h = new $().subVectors(t, r).normalize(), a = s.normal1.dot(h) > 0, l = s.normal2 ? s.normal2.dot(h) > 0 : !0;
-    if (a !== l || !s.normal2) {
-      e.push(s);
+    const c = new $().addVectors(s.a, s.b).multiplyScalar(0.5), l = new $().subVectors(t, c).normalize(), a = s.normal1.dot(l) > 0, h = s.normal2 ? s.normal2.dot(l) > 0 : !0;
+    if (a !== h || !s.normal2) {
+      n.push(s);
       continue;
     }
-    s.normal2 && s.normal1.dot(s.normal2) < n && o.push(s);
+    s.normal2 && s.normal1.dot(s.normal2) < e && o.push(s);
   }
-  return console.log(`classifyEdges: ${e.length} profiles, ${o.length} smooth/crease edges`), { profiles: e, smoothFiltered: o };
+  return console.log(`classifyEdges: ${n.length} profiles, ${o.length} smooth/crease edges`), { profiles: n, smoothFiltered: o };
 }
-function dt(i, t, n, e, o = 1) {
-  const s = n / 2, r = e / 2, h = (a) => {
-    const l = a.clone().project(t);
-    return new D(
-      l.x * s * o,
-      -l.y * r * o
+function rt(i, t, e, n, o = 1) {
+  const s = e / 2, c = n / 2, l = (a) => {
+    const h = a.clone().project(t);
+    return new W(
+      h.x * s * o,
+      -h.y * c * o
     );
   };
   return i.map((a) => ({
-    a: h(a.a),
-    b: h(a.b),
+    a: l(a.a),
+    b: l(a.b),
     a3d: a.a.clone(),
     b3d: a.b.clone(),
     midpoint3d: new $().addVectors(a.a, a.b).multiplyScalar(0.5),
@@ -1411,63 +1411,122 @@ function dt(i, t, n, e, o = 1) {
     normal2: a.normal2
   }));
 }
-function Qt(i, t) {
-  const n = i.a.x, e = i.a.y, o = i.b.x, s = i.b.y, r = t.a.x, h = t.a.y, a = t.b.x, l = t.b.y, c = (n - o) * (h - l) - (e - s) * (r - a);
-  if (Math.abs(c) < 1e-10) return null;
-  const u = ((n - r) * (h - l) - (e - h) * (r - a)) / c, f = -((n - o) * (e - h) - (e - s) * (n - r)) / c, d = 1e-3;
+class ae {
+  /**
+   * @param {number} cellSize 
+   */
+  constructor(t) {
+    this.cellSize = t, this.cells = /* @__PURE__ */ new Map();
+  }
+  /**
+   * Get cell key for a point
+   * @param {number} x 
+   * @param {number} y 
+   * @returns {string}
+   */
+  getCellKey(t, e) {
+    const n = Math.floor(t / this.cellSize), o = Math.floor(e / this.cellSize);
+    return `${n},${o}`;
+  }
+  /**
+   * Get all cells an edge crosses
+   * @param {Edge2D} edge 
+   * @returns {string[]}
+   */
+  getCellsCrossed(t) {
+    const e = /* @__PURE__ */ new Set(), n = Math.abs(t.b.x - t.a.x), o = Math.abs(t.b.y - t.a.y), s = Math.max(n, o) / this.cellSize + 1;
+    for (let c = 0; c <= s; c++) {
+      const l = c / s, a = t.a.x + l * (t.b.x - t.a.x), h = t.a.y + l * (t.b.y - t.a.y);
+      e.add(this.getCellKey(a, h));
+    }
+    return Array.from(e);
+  }
+  /**
+   * Insert an edge into the spatial hash
+   * @param {Edge2D} edge 
+   */
+  insert(t) {
+    var n;
+    const e = this.getCellsCrossed(t);
+    for (const o of e)
+      this.cells.has(o) || this.cells.set(o, []), (n = this.cells.get(o)) == null || n.push(t);
+  }
+  /**
+   * Get all edges in a cell
+   * @param {string} key 
+   * @returns {Edge2D[]}
+   */
+  query(t) {
+    return this.cells.get(t) || [];
+  }
+  /**
+   * Get all cell keys
+   * @returns {string[]}
+   */
+  getAllCells() {
+    return Array.from(this.cells.keys());
+  }
+  clear() {
+    this.cells.clear();
+  }
+}
+function le(i, t) {
+  const e = i.a.x, n = i.a.y, o = i.b.x, s = i.b.y, c = t.a.x, l = t.a.y, a = t.b.x, h = t.b.y, r = (e - o) * (l - h) - (n - s) * (c - a);
+  if (Math.abs(r) < 1e-10) return null;
+  const u = ((e - c) * (l - h) - (n - l) * (c - a)) / r, f = -((e - o) * (n - l) - (n - s) * (e - c)) / r, d = 1e-3;
   return u > d && u < 1 - d && f > d && f < 1 - d ? {
     t1: u,
     t2: f,
-    point: new D(
-      n + u * (o - n),
-      e + u * (s - e)
+    point: new W(
+      e + u * (o - e),
+      n + u * (s - n)
     )
   } : null;
 }
-function _t(i) {
-  var r, h, a, l, c, u;
-  const t = /* @__PURE__ */ new Map(), n = 0.01, e = (f, d) => {
-    const m = d.b.x - d.a.x, p = d.b.y - d.a.y, w = m * m + p * p;
-    if (w < 1e-10) return null;
-    const y = ((f.x - d.a.x) * m + (f.y - d.a.y) * p) / w;
-    if (y <= n || y >= 1 - n) return null;
-    const x = d.a.x + y * m, g = d.a.y + y * p;
-    return (f.x - x) * (f.x - x) + (f.y - g) * (f.y - g) < 1 ? y : null;
+function Et(i) {
+  var c, l, a, h, r, u;
+  const t = /* @__PURE__ */ new Map(), e = 0.01, n = (f, d) => {
+    const y = d.b.x - d.a.x, m = d.b.y - d.a.y, b = y * y + m * m;
+    if (b < 1e-10) return null;
+    const p = ((f.x - d.a.x) * y + (f.y - d.a.y) * m) / b;
+    if (p <= e || p >= 1 - e) return null;
+    const x = d.a.x + p * y, g = d.a.y + p * m;
+    return (f.x - x) * (f.x - x) + (f.y - g) * (f.y - g) < 1 ? p : null;
   }, o = /* @__PURE__ */ new Set();
   for (let f = 0; f < i.length; f++)
     for (let d = f + 1; d < i.length; d++) {
-      const m = Qt(i[f], i[d]);
-      if (m)
-        t.has(i[f]) || t.set(i[f], []), t.has(i[d]) || t.set(i[d], []), (r = t.get(i[f])) == null || r.push({ t: m.t1, point: m.point }), (h = t.get(i[d])) == null || h.push({ t: m.t2, point: m.point });
+      const y = le(i[f], i[d]);
+      if (y)
+        t.has(i[f]) || t.set(i[f], []), t.has(i[d]) || t.set(i[d], []), (c = t.get(i[f])) == null || c.push({ t: y.t1, point: y.point }), (l = t.get(i[d])) == null || l.push({ t: y.t2, point: y.point });
       else {
-        const p = e(i[f].a, i[d]);
-        p !== null && (t.has(i[d]) || t.set(i[d], []), (a = t.get(i[d])) == null || a.push({ t: p, point: i[f].a.clone() }), o.add(i[f]), o.add(i[d]));
-        const w = e(i[f].b, i[d]);
-        w !== null && (t.has(i[d]) || t.set(i[d], []), (l = t.get(i[d])) == null || l.push({ t: w, point: i[f].b.clone() }), o.add(i[f]), o.add(i[d]));
-        const y = e(i[d].a, i[f]);
-        y !== null && (t.has(i[f]) || t.set(i[f], []), (c = t.get(i[f])) == null || c.push({ t: y, point: i[d].a.clone() }), o.add(i[f]), o.add(i[d]));
-        const x = e(i[d].b, i[f]);
+        const m = n(i[f].a, i[d]);
+        m !== null && (t.has(i[d]) || t.set(i[d], []), (a = t.get(i[d])) == null || a.push({ t: m, point: i[f].a.clone() }), o.add(i[f]), o.add(i[d]));
+        const b = n(i[f].b, i[d]);
+        b !== null && (t.has(i[d]) || t.set(i[d], []), (h = t.get(i[d])) == null || h.push({ t: b, point: i[f].b.clone() }), o.add(i[f]), o.add(i[d]));
+        const p = n(i[d].a, i[f]);
+        p !== null && (t.has(i[f]) || t.set(i[f], []), (r = t.get(i[f])) == null || r.push({ t: p, point: i[d].a.clone() }), o.add(i[f]), o.add(i[d]));
+        const x = n(i[d].b, i[f]);
         x !== null && (t.has(i[f]) || t.set(i[f], []), (u = t.get(i[f])) == null || u.push({ t: x, point: i[d].b.clone() }), o.add(i[f]), o.add(i[d]));
       }
     }
   console.log(`T-junction detection: ${o.size} potential straggler edges`);
   const s = [];
   for (const f of i) {
-    const d = t.get(f), m = o.has(f);
+    const d = t.get(f), y = o.has(f);
     if (!d || d.length === 0) {
-      f.isTJunctionStraggler = m, s.push(f);
+      f.isTJunctionStraggler = y, s.push(f);
       continue;
     }
-    d.sort((y, x) => y.t - x.t);
-    let p = f.a, w = f.a3d;
-    for (const y of d) {
-      const x = new $().lerpVectors(f.a3d, f.b3d, y.t);
+    d.sort((p, x) => p.t - x.t);
+    let m = f.a, b = f.a3d;
+    for (const p of d) {
+      const x = new $().lerpVectors(f.a3d, f.b3d, p.t);
       s.push({
-        a: p.clone(),
-        b: y.point.clone(),
-        a3d: w.clone(),
+        a: m.clone(),
+        b: p.point.clone(),
+        a3d: b.clone(),
         b3d: x.clone(),
-        midpoint3d: new $().addVectors(w, x).multiplyScalar(0.5),
+        midpoint3d: new $().addVectors(b, x).multiplyScalar(0.5),
         isProfile: f.isProfile,
         visible: f.visible,
         faceIdx: f.faceIdx,
@@ -1475,15 +1534,15 @@ function _t(i) {
         isHatch: f.isHatch,
         normal1: f.normal1,
         // Propagate normal for smooth filter
-        isTJunctionStraggler: m
-      }), y.t, p = y.point, w = x;
+        isTJunctionStraggler: y
+      }), p.t, m = p.point, b = x;
     }
     s.push({
-      a: p.clone(),
+      a: m.clone(),
       b: f.b.clone(),
-      a3d: w.clone(),
+      a3d: b.clone(),
       b3d: f.b3d.clone(),
-      midpoint3d: new $().addVectors(w, f.b3d).multiplyScalar(0.5),
+      midpoint3d: new $().addVectors(b, f.b3d).multiplyScalar(0.5),
       isProfile: f.isProfile,
       visible: f.visible,
       faceIdx: f.faceIdx,
@@ -1491,404 +1550,561 @@ function _t(i) {
       isHatch: f.isHatch,
       normal1: f.normal1,
       // Propagate normal for smooth filter
-      isTJunctionStraggler: m
+      isTJunctionStraggler: y
     });
   }
   return s;
 }
-function Gt(i, t, n, e) {
-  const o = (c, u, f) => (c.x - f.x) * (u.y - f.y) - (u.x - f.x) * (c.y - f.y), s = o(i, t, n), r = o(i, n, e), h = o(i, e, t), a = s < 0 || r < 0 || h < 0, l = s > 0 || r > 0 || h > 0;
-  return !(a && l);
+function he(i, t, e, n, o, s, c = !1) {
+  if (c)
+    return i.forEach((y) => y.visible = !0), i;
+  const l = [];
+  if (!s)
+    return console.warn("No renderer provided, skipping occlusion test"), i;
+  const a = new lt(n, o, {
+    minFilter: Q,
+    magFilter: Q,
+    format: qt,
+    type: Yt
+  }), h = new zt({
+    vertexShader: `
+            attribute vec3 faceColor;
+            varying vec3 vFaceColor;
+            void main() {
+                vFaceColor = faceColor;
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            }
+        `,
+    fragmentShader: `
+            varying vec3 vFaceColor;
+            void main() {
+                gl_FragColor = vec4(vFaceColor, 1.0);
+            }
+        `,
+    side: At
+  }), r = [];
+  let u = 0;
+  for (const y of t) {
+    const m = y.geometry, b = m.attributes.position, p = m.index, x = p ? p.count / 3 : b.count / 3, g = [], w = [];
+    for (let E = 0; E < x; E++) {
+      let P, k, O;
+      p ? (P = p.getX(E * 3), k = p.getX(E * 3 + 1), O = p.getX(E * 3 + 2)) : (P = E * 3, k = E * 3 + 1, O = E * 3 + 2);
+      const F = new $(b.getX(P), b.getY(P), b.getZ(P)), H = new $(b.getX(k), b.getY(k), b.getZ(k)), I = new $(b.getX(O), b.getY(O), b.getZ(O));
+      F.applyMatrix4(y.matrixWorld), H.applyMatrix4(y.matrixWorld), I.applyMatrix4(y.matrixWorld), g.push(F.x, F.y, F.z, H.x, H.y, H.z, I.x, I.y, I.z);
+      const q = u + E + 1, X = (q & 255) / 255, T = (q >> 8 & 255) / 255, A = (q >> 16 & 255) / 255;
+      w.push(X, T, A, X, T, A, X, T, A);
+    }
+    const S = new Dt();
+    S.setAttribute("position", new dt(new Float32Array(g), 3)), S.setAttribute("faceColor", new dt(new Float32Array(w), 3));
+    const v = new Wt(S, h);
+    r.push(v), u += x;
+  }
+  const f = new Bt();
+  for (const y of r)
+    f.add(y);
+  s.setRenderTarget(a), s.setClearColor(0, 1), s.clear(), s.render(f, e);
+  const d = new Uint8Array(n * o * 4);
+  s.readRenderTargetPixels(a, 0, 0, n, o, d), s.setRenderTarget(null);
+  for (const y of i) {
+    const m = (y.a.x + y.b.x) / 2, b = (y.a.y + y.b.y) / 2, p = Math.round(m + n / 2), x = Math.round(o / 2 + b);
+    if (p < 0 || p >= n || x < 0 || x >= o) {
+      y.visible = !0, l.push(y);
+      continue;
+    }
+    const g = ((o - 1 - x) * n + p) * 4, w = d[g], S = d[g + 1], v = d[g + 2], E = w + (S << 8) + (v << 16);
+    if (E === 0) {
+      y.visible = !0, l.push(y);
+      continue;
+    }
+    const P = y.faceIdx + 1;
+    E === P ? (y.visible = !0, l.push(y)) : y.visible = !1;
+  }
+  a.dispose(), h.dispose();
+  for (const y of r)
+    y.geometry.dispose();
+  return l;
 }
-function Ut(i, t, n, e, o = 2) {
-  const s = e.x - n.x, r = e.y - n.y, h = s * s + r * r;
-  if (h < 1e-10) return !1;
-  const a = (l) => {
-    const c = ((l.x - n.x) * s + (l.y - n.y) * r) / h, u = n.x + c * s, f = n.y + c * r;
-    return (l.x - u) * (l.x - u) + (l.y - f) * (l.y - f) < o * o && c >= -0.01 && c <= 1.01;
+function ue(i, t, e, n) {
+  const o = (r, u, f) => (r.x - f.x) * (u.y - f.y) - (u.x - f.x) * (r.y - f.y), s = o(i, t, e), c = o(i, e, n), l = o(i, n, t), a = s < 0 || c < 0 || l < 0, h = s > 0 || c > 0 || l > 0;
+  return !(a && h);
+}
+function fe(i, t, e, n, o = 2) {
+  const s = n.x - e.x, c = n.y - e.y, l = s * s + c * c;
+  if (l < 1e-10) return !1;
+  const a = (h) => {
+    const r = ((h.x - e.x) * s + (h.y - e.y) * c) / l, u = e.x + r * s, f = e.y + r * c;
+    return (h.x - u) * (h.x - u) + (h.y - f) * (h.y - f) < o * o && r >= -0.01 && r <= 1.01;
   };
   return a(i) && a(t);
 }
-function tn(i, t) {
-  const n = [];
-  for (const e of t) {
+function de(i, t) {
+  const e = [];
+  for (const n of t) {
     const o = [
-      { a: e.a2d, b: e.b2d, name: "AB" },
-      { a: e.b2d, b: e.c2d, name: "BC" },
-      { a: e.c2d, b: e.a2d, name: "CA" }
+      { a: n.a2d, b: n.b2d, name: "AB" },
+      { a: n.b2d, b: n.c2d, name: "BC" },
+      { a: n.c2d, b: n.a2d, name: "CA" }
     ];
     for (const s of o)
-      if (Ut(i.a, i.b, s.a, s.b)) {
-        n.push({
-          face: e,
+      if (fe(i.a, i.b, s.a, s.b)) {
+        e.push({
+          face: n,
           matchedEdge: s.name,
           matchType: "collinear"
         });
         break;
       }
   }
-  return n;
+  return e;
 }
-function nn(i, t, n, e, o, s, r) {
-  const h = { x: e.x - t.x, y: e.y - t.y }, a = { x: n.x - t.x, y: n.y - t.y }, l = { x: i.x - t.x, y: i.y - t.y }, c = h.x * h.x + h.y * h.y, u = h.x * a.x + h.y * a.y, f = h.x * l.x + h.y * l.y, d = a.x * a.x + a.y * a.y, m = a.x * l.x + a.y * l.y, p = c * d - u * u;
-  if (Math.abs(p) < 1e-10) return 1 / 0;
-  const w = (d * f - u * m) / p, y = (c * m - u * f) / p;
-  return (1 - w - y) * o + y * s + w * r;
+function xe(i, t, e, n, o, s, c) {
+  const l = { x: n.x - t.x, y: n.y - t.y }, a = { x: e.x - t.x, y: e.y - t.y }, h = { x: i.x - t.x, y: i.y - t.y }, r = l.x * l.x + l.y * l.y, u = l.x * a.x + l.y * a.y, f = l.x * h.x + l.y * h.y, d = a.x * a.x + a.y * a.y, y = a.x * h.x + a.y * h.y, m = r * d - u * u;
+  if (Math.abs(m) < 1e-10) return 1 / 0;
+  const b = (d * f - u * y) / m, p = (r * y - u * f) / m;
+  return (1 - b - p) * o + p * s + b * c;
 }
-function en(i, t, n = 0.99, e = 0.5) {
+function ge(i, t, e = 0.99, n = 0.5) {
   const o = [];
   let s = 0;
-  for (const r of i) {
-    const h = tn(r, t);
-    r.adjacentFaceCount = h.length;
+  for (const c of i) {
+    const l = de(c, t);
+    c.adjacentFaceCount = l.length;
     let a = !1;
-    if (h.length === 2) {
-      const l = h[0].face, c = h[1].face, u = l.normal, f = c.normal;
+    if (l.length === 2) {
+      const h = l[0].face, r = l[1].face, u = h.normal, f = r.normal;
       if (u && f) {
-        const d = u.dot(f), m = Math.abs(d);
-        r.faceSimilarity = m;
-        let p;
-        d > 0 ? p = Math.abs(l.constant - c.constant) : p = Math.abs(l.constant + c.constant), m >= n && p < e && (a = !0, s++);
+        const d = u.dot(f), y = Math.abs(d);
+        c.faceSimilarity = y;
+        let m;
+        d > 0 ? m = Math.abs(h.constant - r.constant) : m = Math.abs(h.constant + r.constant), y >= e && m < n && (a = !0, s++);
       }
-    } else if (h.length > 2) {
-      const l = h.map((c) => c.face).filter((c) => c.normal);
-      if (l.length >= 2) {
-        let c = !0, u = 1;
-        for (let f = 1; f < l.length; f++) {
-          const d = l[0].normal.dot(l[f].normal), m = Math.abs(d);
-          let p;
-          if (d > 0 ? p = Math.abs(l[0].constant - l[f].constant) : p = Math.abs(l[0].constant + l[f].constant), u = Math.min(u, m), m < n || p >= e) {
-            c = !1;
+    } else if (l.length > 2) {
+      const h = l.map((r) => r.face).filter((r) => r.normal);
+      if (h.length >= 2) {
+        let r = !0, u = 1;
+        for (let f = 1; f < h.length; f++) {
+          const d = h[0].normal.dot(h[f].normal), y = Math.abs(d);
+          let m;
+          if (d > 0 ? m = Math.abs(h[0].constant - h[f].constant) : m = Math.abs(h[0].constant + h[f].constant), u = Math.min(u, y), y < e || m >= n) {
+            r = !1;
             break;
           }
         }
-        r.faceSimilarity = u, c && (a = !0, s++);
+        c.faceSimilarity = u, r && (a = !0, s++);
       }
     }
-    a || o.push(r);
+    a || o.push(c);
   }
   return console.log(`Geometric straggler filter: removed ${s} coplanar edges`), o;
 }
-function on(i, t, n) {
-  const e = n.position;
-  return sn(i, t, e);
+function ye(i, t, e) {
+  const n = e.position;
+  return pe(i, t, n);
 }
-function sn(i, t, n) {
-  const e = [];
+function pe(i, t, e) {
+  const n = [];
   let o = 0, s = 0;
-  for (const r of i) {
-    const h = new D(
-      (r.a.x + r.b.x) / 2,
-      (r.a.y + r.b.y) / 2
-    ), a = r.midpoint3d, l = n.distanceTo(a);
-    let c = !1;
+  for (const c of i) {
+    const l = new W(
+      (c.a.x + c.b.x) / 2,
+      (c.a.y + c.b.y) / 2
+    ), a = c.midpoint3d, h = e.distanceTo(a);
+    let r = !1;
     for (const u of t) {
-      if (u.mesh === r.mesh && (u.faceIdx === r.faceIdx || u.faceIdx === r.faceIdx2) || !Gt(h, u.a2d, u.b2d, u.c2d))
+      if (u.mesh === c.mesh && (u.faceIdx === c.faceIdx || u.faceIdx === c.faceIdx2) || !ue(l, u.a2d, u.b2d, u.c2d))
         continue;
-      if (nn(
-        h,
+      if (xe(
+        l,
         u.a2d,
         u.b2d,
         u.c2d,
         u.depthA,
         u.depthB,
         u.depthC
-      ) < l - 1e-3) {
-        c = !0, s++;
+      ) < h - 1e-3) {
+        r = !0, s++;
         break;
       }
       o++;
     }
-    c ? r.visible = !1 : (r.visible = !0, e.push(r));
+    r ? c.visible = !1 : (c.visible = !0, n.push(c));
   }
-  return console.log(`[JS] Occlusion debug: ${o} point-in-triangle hits, ${s} occluded`), e;
+  return console.log(`[JS] Occlusion debug: ${o} point-in-triangle hits, ${s} occluded`), n;
 }
-function rn(i, t = 0.5) {
-  const n = /* @__PURE__ */ new Map(), e = (s) => `${Math.round(s.x / t)},${Math.round(s.y / t)}`, o = (s) => {
-    const r = e(s.a), h = e(s.b);
-    return r < h ? `${r}-${h}` : `${h}-${r}`;
+function me(i, t, e, n = 0.05) {
+  const o = new Ht(), s = [], c = [];
+  t.traverse((l) => {
+    l.isMesh && c.push(l);
+  });
+  for (const l of i) {
+    const a = new $().subVectors(l.midpoint3d, e.position), h = a.clone().normalize(), r = a.length(), u = r * n;
+    o.set(e.position.clone(), h);
+    const f = o.intersectObjects(c, !0);
+    if (f.length === 0)
+      l.visible = !0, s.push(l);
+    else {
+      let d = !1;
+      for (const y of f)
+        if (!(y.distance >= r - u) && !(y.object === l.mesh && y.faceIndex === l.faceIdx)) {
+          d = !0;
+          break;
+        }
+      d ? l.visible = !1 : (l.visible = !0, s.push(l));
+    }
+  }
+  return s;
+}
+function vt(i, t = 0.5) {
+  const e = /* @__PURE__ */ new Map(), n = (s) => `${Math.round(s.x / t)},${Math.round(s.y / t)}`, o = (s) => {
+    const c = n(s.a), l = n(s.b);
+    return c < l ? `${c}-${l}` : `${l}-${c}`;
   };
   for (const s of i) {
-    const r = o(s);
-    n.has(r) || n.set(r, s);
+    const c = o(s);
+    e.has(c) || e.set(c, s);
   }
-  return Array.from(n.values());
+  return Array.from(e.values());
 }
-function cn(i, t = 1, n = 50) {
-  const e = (y) => `${Math.round(y.x / t)},${Math.round(y.y / t)}`, o = /* @__PURE__ */ new Map();
-  for (const y of i)
-    for (const x of ["a", "b"]) {
-      const g = y[x], b = e(g);
-      o.has(b) || o.set(b, { edges: [], point: { x: g.x, y: g.y } }), o.get(b).edges.push({ edge: y, endpoint: x });
+function St(i, t = 1, e = 50) {
+  const n = (p) => `${Math.round(p.x / t)},${Math.round(p.y / t)}`, o = /* @__PURE__ */ new Map();
+  for (const p of i)
+    for (
+      const x of
+      /** @type {const} */
+      ["a", "b"]
+    ) {
+      const g = x === "a" ? p.a : p.b, w = n(g);
+      o.has(w) || o.set(w, { edges: [], point: { x: g.x, y: g.y } }), o.get(w).edges.push({ edge: p, endpoint: x });
     }
   const s = [];
-  for (const [y, x] of o)
+  for (const [p, x] of o)
     if (x.edges.length === 1) {
-      const { edge: g, endpoint: b } = x.edges[0], S = x.point, P = b === "a" ? g.b : g.a, v = S.x - P.x, I = S.y - P.y, E = Math.sqrt(v * v + I * I);
-      if (E < 1e-3) continue;
+      const { edge: g, endpoint: w } = x.edges[0], S = x.point, v = w === "a" ? g.b : g.a, E = S.x - v.x, P = S.y - v.y, k = Math.sqrt(E * E + P * P);
+      if (k < 1e-3) continue;
       s.push({
-        key: y,
+        key: p,
         edge: g,
-        endpoint: b,
+        endpoint: w,
         point: S,
-        otherPoint: P,
-        dirX: v / E,
-        dirY: I / E,
-        len: E
+        otherPoint: v,
+        dirX: E / k,
+        dirY: P / k,
+        len: k
       });
     }
   if (console.log(`Edge cleanup: found ${s.length} orphaned endpoints`), s.length === 0) return i;
-  const r = (y, x, g, b) => {
-    const S = x.x * b.y - x.y * b.x;
+  const c = (p, x, g, w) => {
+    const S = x.x * w.y - x.y * w.x;
     if (Math.abs(S) < 1e-4) return null;
-    const P = g.x - y.x, v = g.y - y.y, I = (P * b.y - v * b.x) / S, E = (P * x.y - v * x.x) / S;
-    return { t1: I, t2: E };
+    const v = g.x - p.x, E = g.y - p.y, P = (v * w.y - E * w.x) / S, k = (v * x.y - E * x.x) / S;
+    return { t1: P, t2: k };
   };
-  let h = 0;
+  let l = 0;
   const a = /* @__PURE__ */ new Set();
-  for (let y = 0; y < s.length; y++) {
-    const x = s[y];
+  for (let p = 0; p < s.length; p++) {
+    const x = s[p];
     if (a.has(x.key)) continue;
-    let g = null, b = null, S = 1 / 0;
-    for (let P = 0; P < s.length; P++) {
-      if (y === P) continue;
-      const v = s[P];
-      if (a.has(v.key) || Math.sqrt(
-        (v.point.x - x.point.x) ** 2 + (v.point.y - x.point.y) ** 2
-      ) > n * 2) continue;
-      const E = r(
+    let g = null, w = null, S = 1 / 0;
+    for (let v = 0; v < s.length; v++) {
+      if (p === v) continue;
+      const E = s[v];
+      if (a.has(E.key) || Math.sqrt(
+        (E.point.x - x.point.x) ** 2 + (E.point.y - x.point.y) ** 2
+      ) > e * 2) continue;
+      const k = c(
         { x: x.point.x, y: x.point.y },
         { x: x.dirX, y: x.dirY },
-        { x: v.point.x, y: v.point.y },
-        { x: v.dirX, y: v.dirY }
+        { x: E.point.x, y: E.point.y },
+        { x: E.dirX, y: E.dirY }
       );
-      if (!E || E.t1 < -0.1 || E.t2 < -0.1 || E.t1 > n || E.t2 > n) continue;
-      const Y = x.point.x + E.t1 * x.dirX, z = x.point.y + E.t1 * x.dirY, R = E.t1 + E.t2;
-      R < S && (S = R, g = v, b = { x: Y, y: z });
+      if (!k || k.t1 < -0.1 || k.t2 < -0.1 || k.t1 > e || k.t2 > e) continue;
+      const O = x.point.x + k.t1 * x.dirX, F = x.point.y + k.t1 * x.dirY, H = k.t1 + k.t2;
+      H < S && (S = H, g = E, w = { x: O, y: F });
     }
-    if (g && b) {
-      const P = xt(
+    if (g && w) {
+      const v = yt(
         x.point,
-        b,
+        w,
         i,
         x.edge,
         g.edge
-      ), v = xt(
+      ), E = yt(
         g.point,
-        b,
+        w,
         i,
         x.edge,
         g.edge
       );
-      if (P || v)
+      if (v || E)
         continue;
-      x.endpoint === "a" ? (x.edge.a.x = b.x, x.edge.a.y = b.y) : (x.edge.b.x = b.x, x.edge.b.y = b.y), g.endpoint === "a" ? (g.edge.a.x = b.x, g.edge.a.y = b.y) : (g.edge.b.x = b.x, g.edge.b.y = b.y), a.add(x.key), a.add(g.key), h++;
+      x.endpoint === "a" ? (x.edge.a.x = w.x, x.edge.a.y = w.y) : (x.edge.b.x = w.x, x.edge.b.y = w.y), g.endpoint === "a" ? (g.edge.a.x = w.x, g.edge.a.y = w.y) : (g.edge.b.x = w.x, g.edge.b.y = w.y), a.add(x.key), a.add(g.key), l++;
     }
   }
-  console.log(`Edge cleanup: extended ${h} pairs of edges to intersections`);
-  let l = 0;
-  for (const y of i) {
-    const x = y.b.x - y.a.x, g = y.b.y - y.a.y;
-    l += Math.sqrt(x * x + g * g);
+  console.log(`Edge cleanup: extended ${l} pairs of edges to intersections`);
+  let h = 0;
+  for (const p of i) {
+    const x = p.b.x - p.a.x, g = p.b.y - p.a.y;
+    h += Math.sqrt(x * x + g * g);
   }
-  const c = l / i.length, u = c / 8;
-  console.log(`Edge cleanup: average edge length = ${c.toFixed(2)}, snap threshold = ${u.toFixed(2)}`);
+  const r = h / i.length, u = r / 8;
+  console.log(`Edge cleanup: average edge length = ${r.toFixed(2)}, snap threshold = ${u.toFixed(2)}`);
   const f = /* @__PURE__ */ new Map();
-  for (const y of i)
-    for (const x of ["a", "b"]) {
-      const g = y[x], b = e(g);
-      f.has(b) || f.set(b, { edges: [], point: g }), f.get(b).edges.push({ edge: y, endpoint: x });
+  for (const p of i)
+    for (
+      const x of
+      /** @type {const} */
+      ["a", "b"]
+    ) {
+      const g = x === "a" ? p.a : p.b, w = n(g);
+      f.has(w) || f.set(w, { edges: [], point: g }), f.get(w).edges.push({ edge: p, endpoint: x });
     }
   const d = [];
-  for (const [y, x] of f)
-    x.edges.length === 1 && d.push({ key: y, ...x.edges[0], point: x.point });
+  for (const [p, x] of f)
+    x.edges.length === 1 && d.push({ key: p, ...x.edges[0], point: x.point });
   console.log(`Edge cleanup: ${d.length} orphaned endpoints before snap pass`);
-  let m = 0;
-  const p = /* @__PURE__ */ new Set();
-  for (let y = 0; y < d.length; y++) {
-    const x = d[y];
-    if (p.has(x.key)) continue;
-    let g = null, b = 1 / 0;
+  let y = 0;
+  const m = /* @__PURE__ */ new Set();
+  for (let p = 0; p < d.length; p++) {
+    const x = d[p];
+    if (m.has(x.key)) continue;
+    let g = null, w = 1 / 0;
     for (let S = 0; S < d.length; S++) {
-      if (y === S) continue;
-      const P = d[S];
-      if (p.has(P.key)) continue;
-      const v = Math.sqrt(
-        (P.point.x - x.point.x) ** 2 + (P.point.y - x.point.y) ** 2
+      if (p === S) continue;
+      const v = d[S];
+      if (m.has(v.key)) continue;
+      const E = Math.sqrt(
+        (v.point.x - x.point.x) ** 2 + (v.point.y - x.point.y) ** 2
       );
-      v < b && (b = v, g = P);
+      E < w && (w = E, g = v);
     }
-    if (g && b < u) {
-      const S = (x.point.x + g.point.x) / 2, P = (x.point.y + g.point.y) / 2;
-      x.endpoint === "a" ? (x.edge.a.x = S, x.edge.a.y = P) : (x.edge.b.x = S, x.edge.b.y = P), g.endpoint === "a" ? (g.edge.a.x = S, g.edge.a.y = P) : (g.edge.b.x = S, g.edge.b.y = P), p.add(x.key), p.add(g.key), m++;
+    if (g && w < u) {
+      const S = (x.point.x + g.point.x) / 2, v = (x.point.y + g.point.y) / 2;
+      x.endpoint === "a" ? (x.edge.a.x = S, x.edge.a.y = v) : (x.edge.b.x = S, x.edge.b.y = v), g.endpoint === "a" ? (g.edge.a.x = S, g.edge.a.y = v) : (g.edge.b.x = S, g.edge.b.y = v), m.add(x.key), m.add(g.key), y++;
     }
   }
-  console.log(`Edge cleanup: snapped ${m} pairs of nearby orphans`);
-  const w = d.length - m * 2;
-  return console.log(`Edge cleanup: ${w} orphaned endpoints remaining`), i;
+  console.log(`Edge cleanup: snapped ${y} pairs of nearby orphans`);
+  const b = d.length - y * 2;
+  return console.log(`Edge cleanup: ${b} orphaned endpoints remaining`), i;
 }
-function an(i, t = 1) {
-  const n = (r) => `${Math.round(r.x / t)},${Math.round(r.y / t)}`, e = /* @__PURE__ */ new Map();
-  for (const r of i) {
-    const h = n(r.a), a = n(r.b);
-    e.set(h, (e.get(h) || 0) + 1), e.set(a, (e.get(a) || 0) + 1);
+function be(i, t = 1) {
+  const e = (c) => `${Math.round(c.x / t)},${Math.round(c.y / t)}`, n = /* @__PURE__ */ new Map();
+  for (const c of i) {
+    const l = e(c.a), a = e(c.b);
+    n.set(l, (n.get(l) || 0) + 1), n.set(a, (n.get(a) || 0) + 1);
   }
-  const o = i.filter((r) => {
-    const h = n(r.a), a = n(r.b), l = e.get(h) || 0, c = e.get(a) || 0;
-    return l >= 2 || c >= 2;
+  const o = i.filter((c) => {
+    const l = e(c.a), a = e(c.b), h = n.get(l) || 0, r = n.get(a) || 0;
+    return h >= 2 || r >= 2;
   }), s = i.length - o.length;
   return s > 0 && console.log(`Edge cleanup: removed ${s} isolated edges (orphaned at both ends)`), o;
 }
-function xt(i, t, n, e, o) {
-  for (const r of n) {
-    if (r === e || r === o) continue;
-    const h = t.x - i.x, a = t.y - i.y, l = r.b.x - r.a.x, c = r.b.y - r.a.y, u = h * c - a * l;
+function yt(i, t, e, n, o) {
+  for (const c of e) {
+    if (c === n || c === o) continue;
+    const l = t.x - i.x, a = t.y - i.y, h = c.b.x - c.a.x, r = c.b.y - c.a.y, u = l * r - a * h;
     if (Math.abs(u) < 1e-3) continue;
-    const f = r.a.x - i.x, d = r.a.y - i.y, m = (f * c - d * l) / u, p = (f * a - d * h) / u;
-    if (m > 1e-3 && m < 1 - 1e-3 && p > 1e-3 && p < 1 - 1e-3)
+    const f = c.a.x - i.x, d = c.a.y - i.y, y = (f * r - d * h) / u, m = (f * a - d * l) / u;
+    if (y > 1e-3 && y < 1 - 1e-3 && m > 1e-3 && m < 1 - 1e-3)
       return !0;
   }
   return !1;
 }
-function ln(i, t, n, e = {}) {
+function Se(i, t, e, n = {}) {
   const {
     smoothThreshold: o = 0.99,
     gridSize: s = 32,
-    skipOcclusion: r = !1,
-    width: h = 800,
+    occlusionEpsilon: c = 0.01,
+    // 1% depth tolerance for depth buffer
+    skipOcclusion: l = !1,
+    width: a = 800,
+    height: h = 600,
+    renderer: r = null
+  } = n;
+  console.time("extractEdges");
+  const u = bt(i, t.position);
+  console.timeEnd("extractEdges"), console.log(`Extracted ${u.length} edges`), console.time("filterBackfacing");
+  const f = wt(u, t.position);
+  console.timeEnd("filterBackfacing"), console.log(`After backface filter: ${f.length} edges`), console.time("classifyEdges");
+  const { profiles: d, smoothFiltered: y } = Mt(f, t.position, o);
+  console.timeEnd("classifyEdges"), console.log(`Profiles: ${d.length}, Smooth edges: ${y.length}`);
+  const m = [...d, ...y];
+  console.time("projectEdges");
+  let b = rt(m, t, a, h);
+  console.timeEnd("projectEdges");
+  for (let P = 0; P < d.length; P++)
+    b[P].isProfile = !0;
+  console.time("spatialHash");
+  const p = Math.max(a, h) / s, x = new ae(p);
+  for (const P of b)
+    x.insert(P);
+  console.timeEnd("spatialHash"), console.time("splitIntersections");
+  const g = /* @__PURE__ */ new Set();
+  let w = [];
+  for (const P of x.getAllCells()) {
+    const k = x.query(P).filter((F) => !g.has(F)), O = Et(k);
+    w.push(...O);
+    for (const F of k) g.add(F);
+  }
+  console.timeEnd("splitIntersections"), console.log(`After splitting: ${w.length} edges`);
+  let S;
+  if (l)
+    console.log("Skipping occlusion test (debug mode)"), S = w;
+  else if (r) {
+    console.time("testOcclusion (face ID buffer)");
+    const P = w.filter((F) => F.isProfile), k = w.filter((F) => !F.isProfile);
+    P.forEach((F) => F.visible = !0);
+    const O = he(k, [i], t, a, h, r, !1);
+    S = [...P, ...O], console.timeEnd("testOcclusion (face ID buffer)");
+  } else
+    console.time("testOcclusion (raycaster - slow)"), S = me(w, e, t, c), console.timeEnd("testOcclusion (raycaster - slow)");
+  console.log(`Visible edges: ${S.length}`), console.time("optimize");
+  const v = vt(S);
+  console.timeEnd("optimize"), console.time("cleanup orphans");
+  const E = St(v);
+  return console.timeEnd("cleanup orphans"), console.log(`Final edges: ${E.length}`), {
+    edges: E,
+    profiles: E.filter((P) => P.isProfile)
+  };
+}
+function we(i, t, e, n = {}) {
+  const {
+    smoothThreshold: o = 0.99,
+    gridSize: s = 32,
+    skipOcclusion: c = !1,
+    width: l = 800,
     height: a = 600,
-    renderer: l = null,
-    internalScale: c = 4,
+    renderer: h = null,
+    internalScale: r = 4,
     // Scale up internally for better precision
     distanceThreshold: u = 0.5
     // Default plane distance threshold
-  } = e;
+  } = n;
   let f = [];
-  for (const X of i) {
-    X.updateMatrixWorld(!0);
-    const H = Jt(X, t.position);
-    f.push(...H);
+  for (const I of i) {
+    I.updateMatrixWorld(!0);
+    const q = bt(I, t.position);
+    f.push(...q);
   }
   console.log(`Extracted ${f.length} edges from ${i.length} meshes`);
-  const { profiles: d, smoothFiltered: m } = Kt(f, t.position, o);
-  console.log(`Profiles: ${d.length}, Crease edges: ${m.length}`);
-  const p = [...d, ...m];
-  console.log(`After smooth filter: ${p.length} edges`);
-  let w = dt(p, t, h, a, c);
-  if (e.hatchEdges && e.hatchEdges.length > 0) {
-    console.log(`Processing ${e.hatchEdges.length} hatch edges...`);
-    let X = Zt(e.hatchEdges, t.position);
-    if (e.minHatchDotProduct !== void 0) {
-      const O = e.minHatchDotProduct;
-      X = X.filter((T) => {
-        const A = new $().addVectors(T.a, T.b).multiplyScalar(0.5), q = new $().subVectors(t.position, A).normalize(), V = T.normal1.dot(q);
-        return Math.abs(V) >= O;
-      }), console.log(`Density filter: kept ${X.length} hatch edges (threshold ${O})`);
+  const { profiles: d, smoothFiltered: y } = Mt(f, t.position, o);
+  console.log(`Profiles: ${d.length}, Crease edges: ${y.length}`);
+  const m = [...d, ...y];
+  console.log(`After smooth filter: ${m.length} edges`);
+  let b = rt(m, t, l, a, r);
+  if (n.hatchEdges && n.hatchEdges.length > 0) {
+    console.log(`Processing ${n.hatchEdges.length} hatch edges...`);
+    let I = wt(n.hatchEdges, t.position);
+    if (n.minHatchDotProduct !== void 0) {
+      const X = n.minHatchDotProduct;
+      I = I.filter((T) => {
+        const A = new $().addVectors(T.a, T.b).multiplyScalar(0.5), z = new $().subVectors(t.position, A).normalize(), N = T.normal1.dot(z);
+        return Math.abs(N) >= X;
+      }), console.log(`Density filter: kept ${I.length} hatch edges (threshold ${X})`);
     }
-    const H = dt(X, t, h, a, c);
-    H.forEach((O) => O.isHatch = !0), w.push(...H), console.log(`Added ${H.length} visible hatch edges`);
+    const q = rt(I, t, l, a, r);
+    q.forEach((X) => X.isHatch = !0), b.push(...q), console.log(`Added ${q.length} visible hatch edges`);
   }
   console.time("splitIntersections");
-  const y = _t(w);
-  console.timeEnd("splitIntersections"), console.log(`After splitting: ${y.length} edges`), console.time("buildProjectedFaces");
-  const x = [], g = t.position, b = h / 2, S = a / 2;
-  for (const X of i) {
-    const H = X.geometry, O = H.attributes.position, T = H.index, A = T ? T.count / 3 : O.count / 3;
-    for (let q = 0; q < A; q++) {
-      let V, C, W;
-      T ? (V = T.getX(q * 3), C = T.getX(q * 3 + 1), W = T.getX(q * 3 + 2)) : (V = q * 3, C = q * 3 + 1, W = q * 3 + 2);
-      const B = new $(O.getX(V), O.getY(V), O.getZ(V)).applyMatrix4(X.matrixWorld), N = new $(O.getX(C), O.getY(C), O.getZ(C)).applyMatrix4(X.matrixWorld), j = new $(O.getX(W), O.getY(W), O.getZ(W)).applyMatrix4(X.matrixWorld), J = new $().subVectors(N, B), K = new $().subVectors(j, B), Q = new $().crossVectors(J, K).normalize(), nt = new $().addVectors(B, N).add(j).divideScalar(3), et = new $().subVectors(g, nt), ot = -Q.dot(B);
-      if (Q.dot(et) <= 0) continue;
-      const at = B.clone().project(t), lt = N.clone().project(t), ht = j.clone().project(t), pt = new D(at.x * b * c, -at.y * S * c), bt = new D(lt.x * b * c, -lt.y * S * c), wt = new D(ht.x * b * c, -ht.y * S * c), Mt = g.distanceTo(B), Pt = g.distanceTo(N), St = g.distanceTo(j);
+  const p = Et(b);
+  console.timeEnd("splitIntersections"), console.log(`After splitting: ${p.length} edges`), console.time("buildProjectedFaces");
+  const x = [], g = t.position, w = l / 2, S = a / 2;
+  for (const I of i) {
+    const q = I.geometry, X = q.attributes.position, T = q.index, A = T ? T.count / 3 : X.count / 3;
+    for (let z = 0; z < A; z++) {
+      let N, Y, B;
+      T ? (N = T.getX(z * 3), Y = T.getX(z * 3 + 1), B = T.getX(z * 3 + 2)) : (N = z * 3, Y = z * 3 + 1, B = z * 3 + 2);
+      const R = new $(X.getX(N), X.getY(N), X.getZ(N)).applyMatrix4(I.matrixWorld), V = new $(X.getX(Y), X.getY(Y), X.getZ(Y)).applyMatrix4(I.matrixWorld), j = new $(X.getX(B), X.getY(B), X.getZ(B)).applyMatrix4(I.matrixWorld), J = new $().subVectors(V, R), K = new $().subVectors(j, R), _ = new $().crossVectors(J, K).normalize(), et = new $().addVectors(R, V).add(j).divideScalar(3), nt = new $().subVectors(g, et), ot = -_.dot(R);
+      if (_.dot(nt) <= 0) continue;
+      const ht = R.clone().project(t), ut = V.clone().project(t), ft = j.clone().project(t), Pt = new W(ht.x * w * r, -ht.y * S * r), kt = new W(ut.x * w * r, -ut.y * S * r), $t = new W(ft.x * w * r, -ft.y * S * r), It = g.distanceTo(R), Ct = g.distanceTo(V), Ot = g.distanceTo(j);
       x.push({
-        a2d: pt,
-        b2d: bt,
-        c2d: wt,
-        depthA: Mt,
-        depthB: Pt,
-        depthC: St,
-        mesh: X,
-        faceIdx: q,
-        normal: Q,
+        a2d: Pt,
+        b2d: kt,
+        c2d: $t,
+        depthA: It,
+        depthB: Ct,
+        depthC: Ot,
+        mesh: I,
+        faceIdx: z,
+        normal: _,
         // Store normal for post-split smooth filter
         constant: ot
         // Store plane constant for coplanar detection
       });
     }
   }
-  console.timeEnd("buildProjectedFaces"), console.log(`Built ${x.length} projected faces for occlusion`), console.time("classifySilhouettes"), hn(y, x), console.timeEnd("classifySilhouettes"), console.time("filterSmoothSplitEdges");
-  const P = en(y, x, o, u);
+  console.timeEnd("buildProjectedFaces"), console.log(`Built ${x.length} projected faces for occlusion`), console.time("classifySilhouettes"), Me(p, x), console.timeEnd("classifySilhouettes"), console.time("filterSmoothSplitEdges");
+  const v = ge(p, x, o, u);
   console.timeEnd("filterSmoothSplitEdges");
-  let v;
-  r ? v = P : (console.time("testOcclusion (math)"), v = on(P, x, t), console.timeEnd("testOcclusion (math)")), console.log(`Visible edges: ${v.length}`), console.time("optimize");
-  const I = rn(v);
+  let E;
+  c ? E = v : (console.time("testOcclusion (math)"), E = ye(v, x, t), console.timeEnd("testOcclusion (math)")), console.log(`Visible edges: ${E.length}`), console.time("optimize");
+  const P = vt(E);
   console.timeEnd("optimize"), console.time("cleanup orphans");
-  const E = cn(I);
+  const k = St(P);
   console.timeEnd("cleanup orphans");
-  const Y = an(E);
-  console.log(`Final edges before optimization: ${Y.length}`);
-  let z = Y;
-  if (Y.length > 0) {
-    let X = 0;
-    for (const T of Y) {
-      const A = T.b.x - T.a.x, q = T.b.y - T.a.y;
-      X += Math.sqrt(A * A + q * q);
+  const O = be(k);
+  console.log(`Final edges before optimization: ${O.length}`);
+  let F = O;
+  if (O.length > 0) {
+    let I = 0;
+    for (const T of O) {
+      const A = T.b.x - T.a.x, z = T.b.y - T.a.y;
+      I += Math.sqrt(A * A + z * z);
     }
-    const H = X / Y.length, O = H / 10;
-    console.log(`Optimization: avgLen=${H.toFixed(2)}, trim limit=${O.toFixed(2)}`), console.time("Optimize.segments"), z = tt.segments(Y, !1, !0, O, !1, !1, !1)._segments, console.timeEnd("Optimize.segments"), console.log(`After optimization: ${z.length} edges`);
+    const q = I / O.length, X = q / 10;
+    console.log(`Optimization: avgLen=${q.toFixed(2)}, trim limit=${X.toFixed(2)}`), console.time("Optimize.segments"), F = tt.segments(O, !1, !0, X, !1, !1, !1)._segments, console.timeEnd("Optimize.segments"), console.log(`After optimization: ${F.length} edges`);
   }
-  for (const X of z)
-    X.a.x /= c, X.a.y /= c, X.b.x /= c, X.b.y /= c;
-  const R = z;
+  for (const I of F)
+    I.a.x /= r, I.a.y /= r, I.b.x /= r, I.b.y /= r;
+  const H = F;
   return {
-    edges: R,
-    profiles: R.filter((X) => X.isProfile),
-    allEdges: y,
+    edges: H,
+    profiles: H.filter((I) => I.isProfile),
+    allEdges: p,
     // For debug visualization
     projectedFaces: x
     // For face visualization
   };
 }
-function hn(i, t) {
+function Me(i, t) {
   for (const o of i) {
     if (o.isHatch) {
       o.isSilhouette = !1;
       continue;
     }
-    const s = (o.a.x + o.b.x) / 2, r = (o.a.y + o.b.y) / 2, h = o.b.x - o.a.x, a = o.b.y - o.a.y, l = Math.sqrt(h * h + a * a);
-    if (l < 1e-3) {
+    const s = (o.a.x + o.b.x) / 2, c = (o.a.y + o.b.y) / 2, l = o.b.x - o.a.x, a = o.b.y - o.a.y, h = Math.sqrt(l * l + a * a);
+    if (h < 1e-3) {
       o.isSilhouette = !1;
       continue;
     }
-    const c = -a / l, u = h / l, f = gt(s, r, c, u, 1e3, t), d = gt(s, r, -c, -u, 1e3, t);
+    const r = -a / h, u = l / h, f = pt(s, c, r, u, 1e3, t), d = pt(s, c, -r, -u, 1e3, t);
     o.isSilhouette = !f || !d;
   }
-  const e = i.filter((o) => o.isSilhouette).length;
-  console.log(`Classified ${e} silhouette edges out of ${i.length}`);
+  const n = i.filter((o) => o.isSilhouette).length;
+  console.log(`Classified ${n} silhouette edges out of ${i.length}`);
 }
-function gt(i, t, n, e, o, s) {
-  for (const r of s)
-    if (un(i, t, n, e, o, r.a2d, r.b2d, r.c2d))
+function pt(i, t, e, n, o, s) {
+  for (const c of s)
+    if (Ee(i, t, e, n, o, c.a2d, c.b2d, c.c2d))
       return !0;
   return !1;
 }
-function un(i, t, n, e, o, s, r, h) {
-  return !!(st(i, t, n, e, o, s.x, s.y, r.x, r.y) || st(i, t, n, e, o, r.x, r.y, h.x, h.y) || st(i, t, n, e, o, h.x, h.y, s.x, s.y));
+function Ee(i, t, e, n, o, s, c, l) {
+  return !!(st(i, t, e, n, o, s.x, s.y, c.x, c.y) || st(i, t, e, n, o, c.x, c.y, l.x, l.y) || st(i, t, e, n, o, l.x, l.y, s.x, s.y));
 }
-function st(i, t, n, e, o, s, r, h, a) {
-  const l = h - s, c = a - r, u = n * c - e * l;
+function st(i, t, e, n, o, s, c, l, a) {
+  const h = l - s, r = a - c, u = e * r - n * h;
   if (Math.abs(u) < 1e-10) return !1;
-  const f = ((s - i) * c - (r - t) * l) / u, d = ((s - i) * e - (r - t) * n) / u;
+  const f = ((s - i) * r - (c - t) * h) / u, d = ((s - i) * n - (c - t) * e) / u;
   return f > 0.1 && f <= o && d >= 0 && d <= 1;
 }
-var L = (i) => Math.round(i * 100) / 100, ct = function(i) {
+var L = (i) => Math.round(i * 100) / 100, at = function(i) {
   mt.call(this), this.node = i;
 };
-ct.prototype = Object.create(mt.prototype);
-ct.prototype.constructor = ct;
-var dn = function() {
-  var i = this, t = document.createElementNS("http://www.w3.org/2000/svg", "svg"), n = document.createElementNS("http://www.w3.org/2000/svg", "g"), e = document.createElementNS("http://www.w3.org/2000/svg", "g"), o = document.createElementNS("http://www.w3.org/2000/svg", "g"), s, r, h, a, l = new $t();
-  t.setAttribute("xmlns", "http://www.w3.org/2000/svg"), t.setAttribute("xmlns:inkscape", "http://www.inkscape.org/namespaces/inkscape"), t.setAttribute("xmlns:xlink", "http://www.w3.org/1999/xlink"), t.setAttribute("version", "1.1"), n.setAttribute("inkscape:label", "Silhouettes"), n.setAttribute("inkscape:groupmode", "layer"), n.id = "silhouettes_layer", t.appendChild(n), o.setAttribute("inkscape:label", "Shading"), o.setAttribute("inkscape:groupmode", "layer"), o.id = "shading_layer", t.appendChild(o), e.setAttribute("inkscape:label", "Edges"), e.setAttribute("inkscape:groupmode", "layer"), e.id = "edges_layer", t.appendChild(e), this.domElement = t, this.showSilhouettes = !0, this.showEdges = !0, this.showHatches = !0, this.silhouetteOptions = {
+at.prototype = Object.create(mt.prototype);
+at.prototype.constructor = at;
+var Pe = function() {
+  var i = this, t = document.createElementNS("http://www.w3.org/2000/svg", "svg"), e = document.createElementNS("http://www.w3.org/2000/svg", "g"), n = document.createElementNS("http://www.w3.org/2000/svg", "g"), o = document.createElementNS("http://www.w3.org/2000/svg", "g"), s, c, l, a, h = new Rt();
+  t.setAttribute("xmlns", "http://www.w3.org/2000/svg"), t.setAttribute("xmlns:inkscape", "http://www.inkscape.org/namespaces/inkscape"), t.setAttribute("xmlns:xlink", "http://www.w3.org/1999/xlink"), t.setAttribute("version", "1.1"), e.setAttribute("inkscape:label", "Silhouettes"), e.setAttribute("inkscape:groupmode", "layer"), e.id = "silhouettes_layer", t.appendChild(e), o.setAttribute("inkscape:label", "Shading"), o.setAttribute("inkscape:groupmode", "layer"), o.id = "shading_layer", t.appendChild(o), n.setAttribute("inkscape:label", "Edges"), n.setAttribute("inkscape:groupmode", "layer"), n.id = "edges_layer", t.appendChild(n), this.domElement = t, this.showSilhouettes = !0, this.showEdges = !0, this.showHatches = !0, this.silhouetteOptions = {
     normalBuckets: 12,
     simplifyTolerance: 2,
     minArea: 100
@@ -1911,28 +2127,28 @@ var dn = function() {
   }, this.hiddenLineOptions = {
     smoothThreshold: 0.99
   }, this._glRenderer = null, this.autoClear = !0, this.setClearColor = function(u) {
-    l.set(u);
+    h.set(u);
   }, this.setPixelRatio = function() {
   }, this.setSize = function(u, f) {
-    s = u, r = f, h = s / 2, a = r / 2, t.setAttribute("viewBox", -h + " " + -a + " " + s + " " + r), t.setAttribute("width", s), t.setAttribute("height", r);
+    s = u, c = f, l = s / 2, a = c / 2, t.setAttribute("viewBox", -l + " " + -a + " " + s + " " + c), t.setAttribute("width", s), t.setAttribute("height", c);
   }, this.getSize = function() {
     return {
       width: s,
-      height: r
+      height: c
     };
   }, this.setGLRenderer = function(u) {
     i._glRenderer = u;
   };
-  function c() {
-    for (; n.childNodes.length > 0; )
-      n.removeChild(n.childNodes[0]);
+  function r() {
     for (; e.childNodes.length > 0; )
       e.removeChild(e.childNodes[0]);
+    for (; n.childNodes.length > 0; )
+      n.removeChild(n.childNodes[0]);
     for (; o.childNodes.length > 0; )
       o.removeChild(o.childNodes[0]);
   }
   this.clear = function() {
-    c(), t.style.backgroundColor = l.getStyle();
+    r(), t.style.backgroundColor = h.getStyle();
   }, this.renderGPULayers = function(u, f) {
     if (!i._glRenderer) {
       console.warn("PlotterRenderer: WebGL renderer not set. Call setGLRenderer() first.");
@@ -1940,68 +2156,82 @@ var dn = function() {
     }
     const d = i._glRenderer;
     if (i.showSilhouettes || i.showHatches) {
-      const m = Xt(d, u, f, {
+      const y = Vt(d, u, f, {
         normalBuckets: i.silhouetteOptions.normalBuckets,
         simplifyTolerance: i.silhouetteOptions.simplifyTolerance,
         minArea: i.silhouetteOptions.minArea,
         insetPixels: i.showHatches ? i.hatchOptions.insetPixels : 0
       });
-      if (i.showSilhouettes && m.forEach((p) => {
-        if (p.boundary.length < 3) return;
-        const w = document.createElementNS("http://www.w3.org/2000/svg", "path");
-        let y = "";
-        p.boundary.forEach((P, v) => {
-          const I = P.x, E = -P.y;
-          y += (v === 0 ? "M" : "L") + L(I) + "," + L(E);
-        }), y += "Z";
-        const x = p.normal, g = Math.floor((x.x * 0.5 + 0.5) * 255), b = Math.floor((x.y * 0.5 + 0.5) * 255), S = Math.floor((x.z * 0.5 + 0.5) * 255);
-        w.setAttribute("d", y), w.setAttribute("fill", `rgba(${g},${b},${S},0.3)`), w.setAttribute("stroke", "none"), n.appendChild(w);
+      if (i.showSilhouettes && y.forEach((m) => {
+        if (m.boundary.length < 3) return;
+        const b = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        let p = "";
+        m.boundary.forEach((v, E) => {
+          const P = v.x, k = -v.y;
+          p += (E === 0 ? "M" : "L") + L(P) + "," + L(k);
+        }), p += "Z";
+        const x = m.normal, g = Math.floor((x.x * 0.5 + 0.5) * 255), w = Math.floor((x.y * 0.5 + 0.5) * 255), S = Math.floor((x.z * 0.5 + 0.5) * 255);
+        b.setAttribute("d", p), b.setAttribute("fill", `rgba(${g},${w},${S},0.3)`), b.setAttribute("stroke", "none"), e.appendChild(b);
       }), i.showHatches) {
-        m.sort((w, y) => w.depth - y.depth);
-        const p = m.map((w) => w.boundary);
-        m.forEach((w, y) => {
-          let x = Bt(w, f, {
+        y.sort((b, p) => b.depth - p.depth);
+        const m = y.map((b) => b.boundary);
+        y.forEach((b, p) => {
+          let x = ne(b, f, {
             baseSpacing: i.hatchOptions.baseSpacing,
             minSpacing: i.hatchOptions.minSpacing,
             maxSpacing: i.hatchOptions.maxSpacing,
             depthFactor: i.hatchOptions.depthFactor,
             insetPixels: i.hatchOptions.insetPixels,
             screenWidth: s,
-            screenHeight: r,
+            screenHeight: c,
             axisSettings: i.hatchOptions.axisSettings
           });
-          for (let g = 0; g < y; g++)
+          for (let g = 0; g < p; g++)
             x = x.flatMap(
-              (b) => Rt(b, p[g])
+              (w) => oe(w, m[g])
             );
           x.forEach((g) => {
-            const b = document.createElementNS("http://www.w3.org/2000/svg", "path"), S = `M${L(g.start.x)},${L(-g.start.y)}L${L(g.end.x)},${L(-g.end.y)}`;
-            b.setAttribute("d", S), b.setAttribute("fill", "none"), b.setAttribute("stroke", i.hatchOptions.stroke), b.setAttribute("stroke-width", i.hatchOptions.strokeWidth), o.appendChild(b);
+            const w = document.createElementNS("http://www.w3.org/2000/svg", "path"), S = `M${L(g.start.x)},${L(-g.start.y)}L${L(g.end.x)},${L(-g.end.y)}`;
+            w.setAttribute("d", S), w.setAttribute("fill", "none"), w.setAttribute("stroke", i.hatchOptions.stroke), w.setAttribute("stroke-width", i.hatchOptions.strokeWidth), o.appendChild(w);
           });
         });
       }
       if (i.showEdges) {
-        const p = [];
-        u.traverse((w) => {
-          w.isMesh && w.geometry && p.push(w);
-        }), p.length > 0 && (ln(p, f, u, {
+        const m = [];
+        u.traverse((b) => {
+          b.isMesh && b.geometry && m.push(b);
+        }), m.length > 0 && (we(m, f, u, {
           smoothThreshold: i.hiddenLineOptions.smoothThreshold,
           width: s,
-          height: r
+          height: c
         }).edges || []).forEach((x) => {
           const g = document.createElementNS("http://www.w3.org/2000/svg", "line");
-          g.setAttribute("x1", L(x.a.x)), g.setAttribute("y1", L(x.a.y)), g.setAttribute("x2", L(x.b.x)), g.setAttribute("y2", L(x.b.y)), g.setAttribute("stroke", i.edgeOptions.stroke), g.setAttribute("stroke-width", i.edgeOptions.strokeWidth), e.appendChild(g);
+          g.setAttribute("x1", L(x.a.x)), g.setAttribute("y1", L(x.a.y)), g.setAttribute("x2", L(x.b.x)), g.setAttribute("y2", L(x.b.y)), g.setAttribute("stroke", i.edgeOptions.stroke), g.setAttribute("stroke-width", i.edgeOptions.strokeWidth), n.appendChild(g);
         });
       }
     }
   }, this.render = function(u, f) {
-    if (!(f instanceof It)) {
+    if (!(f instanceof Lt)) {
       console.error("PlotterRenderer.render: camera is not an instance of Camera.");
       return;
     }
   };
 };
 export {
-  dn as PlotterRenderer,
-  ct as SVGObject
+  M as GeomUtil,
+  tt as Optimize,
+  Pe as PlotterRenderer,
+  C as Point,
+  at as SVGObject,
+  D as Segment,
+  G as Segments,
+  St as cleanupOrphanedEdges,
+  oe as clipLineOutsidePolygon,
+  xt as clipLineToPolygon,
+  Se as computeHiddenLines,
+  we as computeHiddenLinesMultiple,
+  Vt as extractNormalRegions,
+  ne as generatePerspectiveHatches,
+  vt as optimizeEdges
 };
+//# sourceMappingURL=three-plotter-renderer.es.js.map

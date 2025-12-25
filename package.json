@@ -1,6 +1,6 @@
 {
   "name": "three-plotter-renderer",
-  "version": "0.0.2",
+  "version": "1.0.0",
   "description": "An SVG renderer for Three.js with hidden line removal - designed for pen plotters and laser cutters",
   "type": "module",
   "main": "dist/three-plotter-renderer.umd.js",
@@ -8,9 +8,11 @@
   "exports": {
     ".": {
       "import": "./dist/three-plotter-renderer.es.js",
-      "require": "./dist/three-plotter-renderer.umd.js"
+      "require": "./dist/three-plotter-renderer.umd.js",
+      "types": "./src/index.d.ts"
     }
   },
+  "types": "src/index.d.ts",
   "files": [
     "dist",
     "src"

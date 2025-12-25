@@ -3,7 +3,7 @@
  * Based on SVGRenderer by @mrdoob / http://mrdoob.com/
  */
 
-import { Box2, Camera, Color, Matrix3, Matrix4, Object3D, Vector3 } from "three";
+import { Camera, Color, Object3D, Vector3 } from "three";
 import { extractNormalRegions } from "./gpu-silhouette.js";
 import { generatePerspectiveHatches, clipLineOutsidePolygon } from "./perspective-hatch.js";
 import { computeHiddenLinesMultiple } from "./hidden-line.js";

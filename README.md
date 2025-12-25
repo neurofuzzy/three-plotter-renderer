@@ -1,37 +1,54 @@
 # three-plotter-renderer
 
-[![npm version](https://img.shields.io/npm/v/three-plotter-renderer.svg)](https://www.npmjs.com/package/three-plotter-renderer)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 An SVG renderer for Three.js with hidden line removal - designed for pen plotters and laser cutters.
 
-<img src="./examples/output/example02.png" width="60%" alt="Example render showing a 3D model converted to plottable SVG">
-
-## Features
-
-- 🎨 **Hidden line removal** - Occlusion-aware rendering produces clean, plottable output
-- 📐 **Multi-layer SVG output** - Separate layers for edges, outlines, and hatching
-- 🖊️ **Plotter-optimized** - Path optimization for efficient pen/laser movement
-- 🔧 **Adjustable hatching** - Real-time control over shading patterns
-- 📦 **Inkscape compatible** - Exports with proper layer structure
+<p align="center">
+  <img src="./public/hero.png" width="45%" alt="3D model render">
+  <img src="./examples/output/complex.svg" width="45%" alt="SVG output">
+</p>
 
 ## Quick Start
 
 ```bash
-npm install three-plotter-renderer three
+npm install github:neurofuzzy/three-plotter-renderer three
 ```
 
 ```javascript
 import * as THREE from 'three';
 import { PlotterRenderer } from 'three-plotter-renderer';
 
-const renderer = new PlotterRenderer();
-renderer.setSize(window.innerWidth, window.innerHeight);
-document.body.appendChild(renderer.domElement);
+const glRenderer = new THREE.WebGLRenderer();
+const plotterRenderer = new PlotterRenderer();
+plotterRenderer.setSize(800, 600);
+plotterRenderer.setGLRenderer(glRenderer);
 
-// After setting up your scene and camera:
-renderer.render(scene, camera);
+// Render your scene to SVG
+plotterRenderer.clear();
+plotterRenderer.renderGPULayers(scene, camera);
+
+// Export
+const svg = plotterRenderer.domElement.outerHTML;
 ```
+
+## Features
+
+- 🎨 **Hidden line removal** - Edge-based occlusion testing produces clean, plottable output
+- 📐 **Multi-layer SVG output** - Separate layers for silhouettes, edges, and hatching
+- 🖊️ **Perspective hatching** - GPU-accelerated, depth-aware hatching that converges toward vanishing points
+- 🔧 **Configurable styling** - Control stroke colors, widths, and hatch spacing per-axis
+- 📦 **Inkscape compatible** - Exports with proper namespace and layer structure
+- 📝 **TypeScript support** - Full type definitions included
+
+## Installation
+
+```bash
+npm install three-plotter-renderer three
+# or from GitHub:
+npm install github:neurofuzzy/three-plotter-renderer three
+```
+
 
 ## Development
 
@@ -39,76 +56,92 @@ renderer.render(scene, camera);
 git clone https://github.com/neurofuzzy/three-plotter-renderer.git
 cd three-plotter-renderer
 npm install
-npm run dev     # Start dev server with hot reload
+npm run dev     # Start dev server
 npm run build   # Build for production
 npm run test    # Run tests
 ```
 
-Open http://localhost:5173/examples/example02.html to see the demo.
+Open http://localhost:5173/ to see the primitives demo.
 
-## Usage
+## How It Works
 
-### Basic Setup
+The hidden line algorithm uses a multi-pass approach for efficient edge classification and occlusion testing:
 
-The renderer works like Three.js's built-in renderers:
+1. **Edge Extraction** - Extracts all edges from mesh geometry, tracking which faces share each edge and their normals
 
-```javascript
-import * as THREE from 'three';
-import { PlotterRenderer } from 'three-plotter-renderer';
+2. **Backface Filtering** - Removes edges where both adjacent faces are facing away from the camera
 
-const renderer = new PlotterRenderer();
-renderer.setSize(800, 600);
-document.getElementById('container').appendChild(renderer.domElement);
+3. **Profile Detection** - Marks edges as silhouettes when they border a front-facing and back-facing face (guaranteed to be visible profile edges)
 
-// Create scene, camera, and mesh as usual
-const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(45, 800/600, 1, 1000);
-camera.position.set(100, 100, 100);
+4. **Smooth Edge Filtering** - Removes edges between faces with similar normals (within configurable threshold), eliminating internal tessellation edges
 
-const geometry = new THREE.BoxGeometry(50, 50, 50);
-const material = new THREE.MeshPhongMaterial();
-const mesh = new THREE.Mesh(geometry, material);
-scene.add(mesh);
+5. **Intersection Splitting** - Uses spatial hashing to efficiently find edge intersections; subdivides edges at crossing points so each resulting segment has a single occlusion state
+
+6. **Occlusion Testing** - Ray-casts from the midpoint of each edge to determine visibility; edges are hidden if the midpoint depth doesn't match the parent face
+
+7. **GPU Hatching** - Renders normal buffer to extract regions by facing direction; generates perspective-aware hatch lines that converge toward vanishing points
+
+## API
+
+### PlotterRenderer
+
+The main renderer class that generates SVG output from Three.js scenes.
+
+```typescript
+const plotterRenderer = new PlotterRenderer();
+
+// Required setup
+plotterRenderer.setSize(width, height);
+plotterRenderer.setGLRenderer(glRenderer); // WebGLRenderer instance
+
+// Layer toggles
+plotterRenderer.showSilhouettes = true;  // Region fills based on normal
+plotterRenderer.showEdges = true;         // Hidden line edges
+plotterRenderer.showHatches = true;       // Perspective hatching
+
+// Edge styling
+plotterRenderer.edgeOptions = {
+  stroke: 'white',
+  strokeWidth: '1px'
+};
+
+// Hatch styling
+plotterRenderer.hatchOptions = {
+  stroke: 'black',
+  strokeWidth: '1px',
+  baseSpacing: 8,
+  insetPixels: 3,    // Erode hatch boundaries
+  axisSettings: {
+    x: { rotation: 0, spacing: 8 },
+    y: { rotation: 0, spacing: 8 },
+    z: { rotation: 0, spacing: 8 }
+  }
+};
 
 // Render
-renderer.render(scene, camera);
+plotterRenderer.clear();
+plotterRenderer.renderGPULayers(scene, camera);
 ```
 
-### Triggering Optimized Render
+### Additional Exports
 
-The renderer has two modes:
-1. **Wireframe mode** - Fast preview while interacting
-2. **Optimized mode** - Full occlusion and hatching (set `renderer.doOptimize = true`)
+```typescript
+// Hidden line computation
+import { computeHiddenLinesMultiple } from 'three-plotter-renderer';
+const result = computeHiddenLinesMultiple(meshes, camera, scene, options);
 
-```javascript
-// After camera stops moving, trigger optimized render:
-renderer.doOptimize = true;
-renderer.render(scene, camera);
+// GPU silhouette extraction
+import { extractNormalRegions } from 'three-plotter-renderer';
+const regions = extractNormalRegions(glRenderer, scene, camera, options);
+
+// Perspective hatching
+import { generatePerspectiveHatches } from 'three-plotter-renderer';
+const hatches = generatePerspectiveHatches(region, camera, options);
+
+// Path optimization
+import { Optimize } from 'three-plotter-renderer';
+const optimized = Optimize.optimize(segments);
 ```
-
-### Keyboard Controls (in examples)
-
-| Key | Action |
-|-----|--------|
-| `,` / `.` | Switch hatch groups |
-| `[` / `]` | Adjust rotation |
-| `-` / `=` | Adjust spacing |
-
-### Exporting SVG
-
-```javascript
-const svgContent = document.getElementById('container').innerHTML;
-// Save svgContent to file
-```
-
-## Model Guidelines
-
-For best results:
-
-- ✅ Use CSG (Constructive Solid Geometry) models
-- ✅ Keep faces as square as possible (use multiple segments)
-- ❌ Avoid intersecting faces (touching is fine)
-- ❌ Avoid extremely stretched faces
 
 ## SVG Layers
 
@@ -116,36 +149,19 @@ The exported SVG contains these layers (Inkscape-compatible):
 
 | Layer | Description |
 |-------|-------------|
-| `outline_layer` | Silhouette outline |
-| `edges_layer` | Visible edges |
-| `shading_layer` | Hatching patterns |
-| `polygons_layer` | Face polygons (hidden) |
+| `silhouettes_layer` | Region fills based on normal direction |
+| `shading_layer` | Perspective hatch lines |
+| `edges_layer` | Visible edge lines (rendered on top) |
 
-## How It Works
+## Model Guidelines
 
-1. Project scene faces using Three.js Projector
-2. Group faces by normal direction and depth
-3. For each face (back to front):
-   - Union to its normal group
-   - Subtract from all other groups
-   - Union to outline group
-4. Apply hatching based on lighting
-5. Optimize path order for plotting
+For best results:
 
-## API
-
-### PlotterRenderer
-
-```typescript
-class PlotterRenderer {
-  domElement: SVGElement;
-  doOptimize: boolean;
-  
-  setSize(width: number, height: number): void;
-  render(scene: THREE.Scene, camera: THREE.Camera): void;
-  setClearColor(color: THREE.Color): void;
-}
-```
+- ✅ Use `flatShading: true` on materials for distinct faces
+- ✅ Use CSG (Constructive Solid Geometry) models
+- ✅ Keep faces as square as possible
+- ❌ Avoid intersecting geometry
+- ❌ Avoid extremely stretched faces
 
 ## Contributing
 
