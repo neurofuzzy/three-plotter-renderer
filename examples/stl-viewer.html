@@ -155,11 +155,10 @@
         import * as THREE from 'three';
         import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
         import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js';
-        import { computeHiddenLinesMultiple, findAdjacentFaces } from '../src/hidden-line.js';
-        import { extractNormalRegions, debugNormalRegions } from '../src/gpu-silhouette.js';
-        import { generatePerspectiveHatches, clipLineOutsidePolygon } from '../src/perspective-hatch.js';
+        import { PlotterRenderer } from '../src/plotter-renderer.js';
 
-        let scene, camera, renderer, controls, mesh;
+        let scene, camera, glRenderer, controls, mesh;
+        let plotterRenderer;
 
         // Toggle for debug visualization vs normal output
         const DEBUG_MODE = false; // Set to true for purple hidden lines + green visible
@@ -171,11 +170,17 @@
             camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 1, 8000);
             camera.position.set(900, 900, 900);
 
-            renderer = new THREE.WebGLRenderer({ antialias: true });
-            renderer.setSize(window.innerWidth, window.innerHeight);
-            document.body.appendChild(renderer.domElement);
+            // WebGL renderer for 3D preview
+            glRenderer = new THREE.WebGLRenderer({ antialias: true });
+            glRenderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(glRenderer.domElement);
 
-            controls = new OrbitControls(camera, renderer.domElement);
+            // PlotterRenderer for SVG output
+            plotterRenderer = new PlotterRenderer();
+            plotterRenderer.setSize(window.innerWidth, window.innerHeight);
+            plotterRenderer.setGLRenderer(glRenderer);
+
+            controls = new OrbitControls(camera, glRenderer.domElement);
             controls.enableDamping = true;
             controls.dampingFactor = 0.05;
 
@@ -184,11 +189,6 @@
             light.position.set(300, 300, 300);
             scene.add(light);
             scene.add(new THREE.AmbientLight(0x404040));
-
-            // Setup SVG overlay
-            const svg = document.getElementById('svg-overlay');
-            svg.setAttribute('width', window.innerWidth);
-            svg.setAttribute('height', window.innerHeight);
 
             // Event listeners
             window.addEventListener('resize', onResize);
@@ -243,11 +243,8 @@
         function onResize() {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-
-            const svg = document.getElementById('svg-overlay');
-            svg.setAttribute('width', window.innerWidth);
-            svg.setAttribute('height', window.innerHeight);
+            glRenderer.setSize(window.innerWidth, window.innerHeight);
+            plotterRenderer.setSize(window.innerWidth, window.innerHeight);
         }
 
         // WASM Full Pipeline
@@ -256,8 +253,7 @@
 
 
         function exportSVG() {
-            const svg = document.getElementById('svg-overlay');
-            const svgContent = svg.outerHTML;
+            const svgContent = plotterRenderer.domElement.outerHTML;
             const blob = new Blob([svgContent], { type: 'image/svg+xml' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
@@ -270,7 +266,7 @@
 
 
         /**
-         * Render: Combined output with toggleable layers
+         * Render: Using PlotterRenderer API with toggleable layers
          */
         function render() {
             if (!mesh) {
@@ -278,144 +274,41 @@
                 return;
             }
 
-            const showSilhouettes = document.getElementById('showSilhouettes').checked;
-            const showEdges = document.getElementById('showEdges').checked;
-            const showHatches = document.getElementById('showHatches').checked;
-
             document.getElementById('stats').textContent = 'Rendering...';
 
-            const svg = document.getElementById('svg-overlay');
-            svg.innerHTML = '';
-            svg.setAttribute('width', window.innerWidth);
-            svg.setAttribute('height', window.innerHeight);
+            // Configure PlotterRenderer from UI checkboxes
+            plotterRenderer.showSilhouettes = document.getElementById('showSilhouettes').checked;
+            plotterRenderer.showEdges = document.getElementById('showEdges').checked;
+            plotterRenderer.showHatches = document.getElementById('showHatches').checked;
 
-            const w2 = window.innerWidth / 2;
-            const h2 = window.innerHeight / 2;
+            // Configure hatch settings from UI inputs
+            plotterRenderer.hatchOptions.axisSettings = {
+                x: {
+                    rotation: parseFloat(document.getElementById('rotX').value) || 0,
+                    spacing: parseFloat(document.getElementById('spaceX').value) || 8
+                },
+                y: {
+                    rotation: parseFloat(document.getElementById('rotY').value) || 0,
+                    spacing: parseFloat(document.getElementById('spaceY').value) || 8
+                },
+                z: {
+                    rotation: parseFloat(document.getElementById('rotZ').value) || 0,
+                    spacing: parseFloat(document.getElementById('spaceZ').value) || 8
+                }
+            };
 
             console.time('Render');
 
-            // --- Layer 1: GPU Silhouettes (Region Boundaries) ---
-            if (showSilhouettes) {
-                console.time('GPU Silhouettes');
-                const regions = extractNormalRegions(renderer, scene, camera, {
-                    normalBuckets: 12,
-                    simplifyTolerance: 2.0,
-                    minArea: 100
-                });
+            // Clear and render using PlotterRenderer
+            plotterRenderer.clear();
+            plotterRenderer.renderGPULayers(scene, camera);
 
-                // Draw each region boundary as a polygon stroke
-                regions.forEach(region => {
-                    if (region.boundary.length < 3) return;
-
-                    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-                    let d = '';
-                    region.boundary.forEach((pt, i) => {
-                        const x = pt.x + w2;
-                        const y = -pt.y + h2;  // GPU regions use different Y convention
-                        d += (i === 0 ? 'M' : 'L') + x.toFixed(1) + ',' + y.toFixed(1);
-                    });
-                    d += 'Z';
-
-                    // Color based on normal direction
-                    const n = region.normal;
-                    const r = Math.floor((n.x * 0.5 + 0.5) * 255);
-                    const g = Math.floor((n.y * 0.5 + 0.5) * 255);
-                    const b = Math.floor((n.z * 0.5 + 0.5) * 255);
-
-                    path.setAttribute('d', d);
-                    path.setAttribute('fill', `rgba(${r},${g},${b},0.3)`);
-                    path.setAttribute('stroke', 'none');
-                    svg.appendChild(path);
-                });
-                console.timeEnd('GPU Silhouettes');
-                console.log(`Drew ${regions.length} GPU silhouette regions`);
-            }
-
-            // --- Layer 2: Hidden Line Edges ---
-            if (showEdges) {
-                console.time('Hidden Lines');
-                const result = computeHiddenLinesMultiple([mesh], camera, scene, {
-                    smoothThreshold: 0.99,
-                    width: window.innerWidth,
-                    height: window.innerHeight
-                });
-                const edges = result.edges || [];
-                console.timeEnd('Hidden Lines');
-
-                edges.forEach(edge => {
-                    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-                    line.setAttribute('x1', edge.a.x + w2);
-                    line.setAttribute('y1', edge.a.y + h2);
-                    line.setAttribute('x2', edge.b.x + w2);
-                    line.setAttribute('y2', edge.b.y + h2);
-                    line.setAttribute('stroke', '#ccc');
-                    line.setAttribute('stroke-width', '1');
-                    svg.appendChild(line);
-                });
-                console.log(`Drew ${edges.length} hidden line edges`);
-            }
-
-            // --- Layer 3: Hatches ---
-            if (showHatches) {
-                console.time('GPU Hatches');
-                const regions = extractNormalRegions(renderer, scene, camera, {
-                    normalBuckets: 12,
-                    simplifyTolerance: 2.0,
-                    minArea: 100,
-                    insetPixels: 3
-                });
-
-                // Sort by depth (front first) for occlusion
-                regions.sort((a, b) => a.depth - b.depth);
-                const allRegionBounds = regions.map(r => r.boundary);
-
-                regions.forEach((region, idx) => {
-                    // Read user settings for each axis
-                    const axisSettings = {
-                        x: {
-                            rotation: parseFloat(document.getElementById('rotX').value) || 0,
-                            spacing: parseFloat(document.getElementById('spaceX').value) || 8
-                        },
-                        y: {
-                            rotation: parseFloat(document.getElementById('rotY').value) || 0,
-                            spacing: parseFloat(document.getElementById('spaceY').value) || 8
-                        },
-                        z: {
-                            rotation: parseFloat(document.getElementById('rotZ').value) || 0,
-                            spacing: parseFloat(document.getElementById('spaceZ').value) || 8
-                        }
-                    };
-
-                    let hatches = generatePerspectiveHatches(region, camera, {
-                        baseSpacing: 8,
-                        minSpacing: 3,
-                        maxSpacing: 40,
-                        depthFactor: 0.5,
-                        screenWidth: window.innerWidth,
-                        screenHeight: window.innerHeight,
-                        axisSettings: axisSettings
-                    });
-
-                    // Clip against front regions
-                    for (let frontIdx = 0; frontIdx < idx; frontIdx++) {
-                        hatches = hatches.flatMap(hatch =>
-                            clipLineOutsidePolygon(hatch, allRegionBounds[frontIdx])
-                        );
-                    }
-
-                    hatches.forEach(hatch => {
-                        const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-                        line.setAttribute('x1', hatch.start.x + w2);
-                        line.setAttribute('y1', -hatch.start.y + h2);
-                        line.setAttribute('x2', hatch.end.x + w2);
-                        line.setAttribute('y2', -hatch.end.y + h2);
-                        line.setAttribute('stroke', '#aaa');
-                        line.setAttribute('stroke-width', '0.5');
-                        svg.appendChild(line);
-                    });
-                });
-                console.timeEnd('GPU Hatches');
-            }
+            // Replace the SVG overlay with PlotterRenderer's output
+            const svgOverlay = document.getElementById('svg-overlay');
+            svgOverlay.innerHTML = plotterRenderer.domElement.innerHTML;
+            svgOverlay.setAttribute('width', window.innerWidth);
+            svgOverlay.setAttribute('height', window.innerHeight);
+            svgOverlay.setAttribute('viewBox', plotterRenderer.domElement.getAttribute('viewBox'));
 
             console.timeEnd('Render');
             document.getElementById('stats').textContent = 'Render complete';
@@ -424,7 +317,7 @@
         function animate() {
             requestAnimationFrame(animate);
             controls.update();
-            renderer.render(scene, camera);
+            glRenderer.render(scene, camera);
         }
 
         init();

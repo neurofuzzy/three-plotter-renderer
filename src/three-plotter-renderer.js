@@ -7,4 +7,6 @@ export { PolygonShape } from './geom/shapes.js';
 export { Optimize } from './optimize.js';
 export { Hatcher } from './hatcher.js';
 export { Expander } from './expander.js';
-export { extractSilhouettePolygons } from './gpu-silhouette.js';
+export { extractSilhouettePolygons, extractNormalRegions } from './gpu-silhouette.js';
+export { generatePerspectiveHatches, clipLineOutsidePolygon } from './perspective-hatch.js';
+export { computeHiddenLines, computeHiddenLinesMultiple } from './hidden-line.js';

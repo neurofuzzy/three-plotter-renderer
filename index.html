@@ -153,9 +153,9 @@
     <script type="module">
         import * as THREE from 'three';
         import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-        import { computeHiddenLinesMultiple } from '../src/hidden-line.js';
-        import { extractNormalRegions } from '../src/gpu-silhouette.js';
-        import { generatePerspectiveHatches, clipLineOutsidePolygon } from '../src/perspective-hatch.js';
+        import { computeHiddenLinesMultiple } from './src/hidden-line.js';
+        import { extractNormalRegions } from './src/gpu-silhouette.js';
+        import { generatePerspectiveHatches, clipLineOutsidePolygon } from './src/perspective-hatch.js';
 
         let scene, camera, renderer, controls;
         let primitives = [];
