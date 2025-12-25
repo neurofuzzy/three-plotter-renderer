@@ -67,11 +67,12 @@ export function extractNormalRegions(renderer, scene, camera, options = {}) {
     // This gives us the true silhouette boundaries
     const { labels, regionCount, labelToNormalId } = connectedComponents(regionMap, width, height);
 
-    // Step 3.5: Apply erosion for insetting (only affects hatch clipping, not boundaries)
-    let erodedRegionMap = regionMap;
+    // Step 3.5: Apply erosion to labels for insetting (preserves region IDs)
+    let erodedLabels = labels;
     if (insetAmount > 0) {
-        erodedRegionMap = erodeRegionMap(regionMap, width, height, insetAmount);
+        erodedLabels = erodeLabels(labels, width, height, insetAmount);
     }
+
 
     // Step 4: Trace boundaries for each region (using ORIGINAL labels, not eroded)
     const regions = [];
@@ -92,10 +93,23 @@ export function extractNormalRegions(renderer, scene, camera, options = {}) {
         // Sample depth at region center
         const depth = sampleRegionDepth(labels, depthPixels, width, height, regionId);
 
+        // Trace eroded boundary for hatch clipping (if different from original)
+        let hatchBoundary = simplified;
+        if (insetAmount > 0) {
+            const erodedBoundary = traceBoundary(erodedLabels, width, height, regionId);
+            if (erodedBoundary.length >= 3) {
+                hatchBoundary = rdpSimplify(erodedBoundary, simplifyTolerance);
+            }
+        }
+
         regions.push({
             boundary: simplified.map(p => new Vector2(
                 (p.x / resolution) - size.x / 2,
                 (p.y / resolution) - size.y / 2  // Y already flipped during readback
+            )),
+            hatchBoundary: hatchBoundary.map(p => new Vector2(
+                (p.x / resolution) - size.x / 2,
+                (p.y / resolution) - size.y / 2
             )),
             normal,
             depth,  // 0-1 normalized depth
@@ -104,9 +118,12 @@ export function extractNormalRegions(renderer, scene, camera, options = {}) {
         });
     }
 
+    // Step 5: Detect holes (regions entirely inside another region)
+    detectHoles(regions);
 
     return regions;
 }
+
 
 /**
  * Render normals to pixel buffer (exported for debugging)
@@ -320,6 +337,43 @@ function erodeRegionMap(regionMap, width, height, iterations) {
                     next[i] = 0;  // Erode this pixel (it touches background)
                 }
                 // else: keep the pixel even if it touches other regions
+            }
+        }
+
+        current = next;
+    }
+
+    return current;
+}
+
+/**
+ * Morphological erosion on labels array (preserves region IDs)
+ * Erodes pixels at boundaries (next to background 0 or different labels)
+ */
+function erodeLabels(labels, width, height, iterations) {
+    let current = new Uint32Array(labels);
+
+    for (let iter = 0; iter < iterations; iter++) {
+        const next = new Uint32Array(current);
+
+        for (let y = 1; y < height - 1; y++) {
+            for (let x = 1; x < width - 1; x++) {
+                const i = y * width + x;
+                const label = current[i];
+
+                if (label === 0) continue;
+
+                // Check 4-connected neighbors
+                // Erode if ANY neighbor is background (0) or different label
+                const left = current[i - 1];
+                const right = current[i + 1];
+                const up = current[i - width];
+                const down = current[i + width];
+
+                if (left === 0 || right === 0 || up === 0 || down === 0) {
+                    next[i] = 0;  // Erode this pixel (it touches background)
+                }
+                // Keep the pixel even if it touches different regions
             }
         }
 
@@ -595,6 +649,91 @@ function polygonArea(points) {
     }
     return area / 2;
 }
+
+/**
+ * Get axis-aligned bounding box for a polygon
+ * @param {Array<{x: number, y: number}>} boundary
+ * @returns {{minX: number, maxX: number, minY: number, maxY: number}}
+ */
+function getBoundingBox(boundary) {
+    let minX = Infinity, maxX = -Infinity;
+    let minY = Infinity, maxY = -Infinity;
+    for (const pt of boundary) {
+        minX = Math.min(minX, pt.x);
+        maxX = Math.max(maxX, pt.x);
+        minY = Math.min(minY, pt.y);
+        maxY = Math.max(maxY, pt.y);
+    }
+    return { minX, maxX, minY, maxY };
+}
+
+/**
+ * Check if inner bbox is fully contained within outer bbox
+ */
+function bboxContains(outer, inner) {
+    return inner.minX >= outer.minX && inner.maxX <= outer.maxX &&
+        inner.minY >= outer.minY && inner.maxY <= outer.maxY;
+}
+
+/**
+ * Point-in-polygon test using ray casting (even-odd rule)
+ */
+function pointInPolygon(x, y, polygon) {
+    let inside = false;
+    const n = polygon.length;
+    for (let i = 0, j = n - 1; i < n; j = i++) {
+        const xi = polygon[i].x, yi = polygon[i].y;
+        const xj = polygon[j].x, yj = polygon[j].y;
+        if (((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi)) {
+            inside = !inside;
+        }
+    }
+    return inside;
+}
+
+/**
+ * Detect which regions are holes (entirely inside another region)
+ * Uses bounding box as early-out, then full point-in-polygon check
+ */
+function detectHoles(regions) {
+    // Precompute bounding boxes
+    const bboxes = regions.map(r => getBoundingBox(r.boundary));
+
+    for (let i = 0; i < regions.length; i++) {
+        const region = regions[i];
+        region.isHole = false;
+        region.parentRegionId = null;
+
+        const bbox = bboxes[i];
+
+        for (let j = 0; j < regions.length; j++) {
+            if (i === j) continue;
+
+            const other = regions[j];
+            const otherBbox = bboxes[j];
+
+            // Early-out: bounding box check
+            if (!bboxContains(otherBbox, bbox)) continue;
+
+            // Full check: all boundary points must be inside other polygon
+            const allInside = region.boundary.every(pt =>
+                pointInPolygon(pt.x, pt.y, other.boundary)
+            );
+
+            if (allInside) {
+                region.isHole = true;
+                region.parentRegionId = other.regionId;
+                console.log(`[Holes] Region ${region.regionId} detected as hole inside region ${other.regionId}`);
+                break;
+            }
+        }
+    }
+
+    const holes = regions.filter(r => r.isHole);
+    console.log(`[Holes] Detected ${holes.length} holes out of ${regions.length} regions`);
+}
+
+
 
 /**
  * Debug visualization: show normal regions colored by their normal direction

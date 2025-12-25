@@ -223,7 +223,13 @@ var PlotterRenderer = function () {
       if (_this.showHatches) {
         // Sort by depth (front first) for occlusion
         regions.sort((a, b) => a.depth - b.depth);
-        const allRegionBounds = regions.map(r => r.boundary);
+        // Use hatchBoundary for clipping (inset boundary, falls back to regular boundary)
+        const allRegionBounds = regions.map(r => r.hatchBoundary || r.boundary);
+
+
+        // Collect hole regions for clipping (regardless of depth order)
+        const holeRegions = regions.filter(r => r.isHole);
+
 
         // Compute light direction for brightness shading
         let lightDir = null;
@@ -284,7 +290,15 @@ var PlotterRenderer = function () {
           }
 
           // Clip against front regions (with time budget check)
+          // Skip clipping holes against their parent region (otherwise hole hatches get removed)
           for (let frontIdx = 0; frontIdx < idx; frontIdx++) {
+            const frontRegion = regions[frontIdx];
+
+            // Don't clip a hole against its parent - the hole IS inside the parent
+            if (region.isHole && region.parentRegionId === frontRegion.regionId) {
+              continue;
+            }
+
             hatches = hatches.flatMap(hatch =>
               clipLineOutsidePolygon(hatch, allRegionBounds[frontIdx])
             );
@@ -296,6 +310,19 @@ var PlotterRenderer = function () {
               break;
             }
           }
+
+
+          // Clip against holes that are children of this region
+          // (holes whose parentRegionId matches this region's regionId)
+          for (const holeRegion of holeRegions) {
+            if (holeRegion.parentRegionId !== region.regionId) continue;
+            if (hatches.length === 0) break;
+            hatches = hatches.flatMap(hatch =>
+              clipLineOutsidePolygon(hatch, holeRegion.boundary)
+            );
+          }
+
+
 
           // Draw hatches (boustrophedon: flip alternating lines to minimize pen travel)
           const hatchTheme = _this.themes[_this.theme] || _this.themes.dark;
