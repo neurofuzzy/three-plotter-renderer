@@ -598,12 +598,22 @@
             plotterRenderer.hatchOptions.maxSpacing = parseFloat(document.getElementById('maxSpacing').value) || 40;
             plotterRenderer.hatchOptions.connectHatches = document.getElementById('connectHatches').checked;
 
-            setTimeout(() => {
+            setTimeout(async () => {
                 const startTime = performance.now();
+                document.getElementById('stats').textContent = 'Rendering...';
 
-                // Clear and render using PlotterRenderer
+                // Set up progress callback
+                plotterRenderer.hatchOptions.progressCallback = (progress) => {
+                    document.getElementById('stats').textContent =
+                        `Rendering... ${Math.round(progress * 100)}%`;
+                };
+
+                // Clear and render using PlotterRenderer (async)
                 plotterRenderer.clear();
-                plotterRenderer.renderGPULayers(scene, camera);
+                await plotterRenderer.renderGPULayers(scene, camera);
+
+                // Clear progress callback
+                plotterRenderer.hatchOptions.progressCallback = null;
 
                 // Replace the SVG overlay with PlotterRenderer's output
                 const svgOverlay = document.getElementById('svg-overlay');
@@ -616,6 +626,7 @@
                 const elapsed = performance.now() - startTime;
                 document.getElementById('stats').textContent = `Render completed in ${elapsed.toFixed(0)}ms`;
             }, 50);
+
         }
 
         function animate() {

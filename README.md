@@ -24,9 +24,9 @@ const plotterRenderer = new PlotterRenderer();
 plotterRenderer.setSize(800, 600);
 plotterRenderer.setGLRenderer(glRenderer);
 
-// Render your scene to SVG
+// Render your scene to SVG (async to avoid blocking on complex models)
 plotterRenderer.clear();
-plotterRenderer.renderGPULayers(scene, camera);
+await plotterRenderer.renderGPULayers(scene, camera);
 
 // Export
 const svg = plotterRenderer.domElement.outerHTML;
@@ -111,6 +111,8 @@ plotterRenderer.hatchOptions = {
   strokeWidth: '1px',
   baseSpacing: 8,
   insetPixels: 3,    // Erode hatch boundaries
+  frameBudgetMs: 16, // Yield to browser every ~16ms (60fps)
+  progressCallback: (p) => console.log(`${Math.round(p*100)}%`),
   axisSettings: {
     x: { rotation: 0, spacing: 8 },
     y: { rotation: 0, spacing: 8 },
@@ -118,9 +120,9 @@ plotterRenderer.hatchOptions = {
   }
 };
 
-// Render
+// Render (async - returns Promise)
 plotterRenderer.clear();
-plotterRenderer.renderGPULayers(scene, camera);
+await plotterRenderer.renderGPULayers(scene, camera);
 ```
 
 ### Additional Exports

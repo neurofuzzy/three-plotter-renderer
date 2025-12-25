@@ -107,8 +107,12 @@ var PlotterRenderer = function () {
       enabled: false,           // Enable lighting-based density
       invert: false,            // True for white pen on black paper
       lightDirection: null      // Override: Vector3 or null (auto from scene)
-    }
+    },
+    // Async rendering options
+    frameBudgetMs: 16,          // Max ms per frame (16ms = ~60fps)
+    progressCallback: null      // Optional: (progress: 0-1) => void
   };
+
 
   // Edge options (hidden line edges)
   this.edgeOptions = {
@@ -173,14 +177,18 @@ var PlotterRenderer = function () {
 
   /**
    * Render GPU-based layers (silhouettes and hatches)
+   * Returns a Promise that resolves when rendering is complete.
+   * Uses frame budgeting to avoid blocking the browser on complex models.
    * @param {Object} scene - Three.js scene
    * @param {Object} camera - Three.js camera
+   * @returns {Promise<void>}
    */
-  this.renderGPULayers = function (scene, camera) {
+  this.renderGPULayers = async function (scene, camera) {
     if (!_this._glRenderer) {
       console.warn("PlotterRenderer: WebGL renderer not set. Call setGLRenderer() first.");
       return;
     }
+
 
     const glRenderer = _this._glRenderer;
 
@@ -259,7 +267,15 @@ var PlotterRenderer = function () {
           lightDir = lightDir.clone().transformDirection(camera.matrixWorldInverse);
         }
 
-        regions.forEach((region, idx) => {
+        // Frame budget settings
+        const frameBudgetMs = _this.hatchOptions.frameBudgetMs || 16;
+        const progressCallback = _this.hatchOptions.progressCallback;
+        let frameStartTime = performance.now();
+
+        // Process regions with frame budgeting (yields control to browser)
+        for (let idx = 0; idx < regions.length; idx++) {
+          const region = regions[idx];
+
           // Compute brightness: N·L (Lambertian)
           let brightness = null;
           if (lightDir && shadingOpts.enabled) {
@@ -286,7 +302,7 @@ var PlotterRenderer = function () {
           // Check time budget after hatch generation
           if (performance.now() - regionStartTime > regionTimeBudget) {
             console.warn(`Region ${idx} hatch generation exceeded time budget, skipping`);
-            return; // Skip this region entirely
+            continue; // Skip this region entirely
           }
 
           // Clip against front regions (with time budget check)
@@ -362,7 +378,25 @@ var PlotterRenderer = function () {
               _shading.appendChild(path);
             });
           }
-        });
+
+          // Check if we should yield to the browser
+          const elapsed = performance.now() - frameStartTime;
+          if (elapsed > frameBudgetMs && idx < regions.length - 1) {
+            // Report progress
+            if (progressCallback) {
+              progressCallback((idx + 1) / regions.length);
+            }
+            // Yield to browser via requestAnimationFrame
+            await new Promise(resolve => requestAnimationFrame(resolve));
+            frameStartTime = performance.now();
+          }
+        }
+
+        // Final progress callback
+        if (progressCallback) {
+          progressCallback(1);
+        }
+
       }
     }
 
