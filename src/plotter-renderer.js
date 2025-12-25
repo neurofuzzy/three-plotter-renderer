@@ -4,7 +4,8 @@
  */
 
 import { Camera, Color, Object3D, Vector3, DirectionalLight, PointLight, SpotLight } from "three";
-import { extractNormalRegions } from "./gpu-silhouette.js";
+import { extractNormalRegions, renderNormals as debugRenderNormals } from "./gpu-silhouette.js";
+export { debugRenderNormals };
 import { generatePerspectiveHatches, clipLineOutsidePolygon } from "./perspective-hatch.js";
 import { computeHiddenLinesMultiple } from "./hidden-line.js";
 
@@ -233,41 +234,35 @@ var PlotterRenderer = function () {
           } else {
             // Auto-detect from scene: find first directional/point/spot light
             scene.traverse((obj) => {
-              if (lightDir) return; // Already found one
-              if (obj instanceof DirectionalLight) {
-                // Directional light points from position toward target
+              if (lightDir) return;
+              if (obj.isDirectionalLight) {
+                // Direction = from target toward light position
                 lightDir = new Vector3().subVectors(obj.position, obj.target.position).normalize();
-              } else if (obj instanceof PointLight || obj instanceof SpotLight) {
-                // Use light position as direction from origin
+              } else if (obj.isPointLight) {
+                lightDir = obj.position.clone().normalize();
+              } else if (obj.isSpotLight) {
                 lightDir = obj.position.clone().normalize();
               }
             });
-            // Fallback: front-top-right
             if (!lightDir) {
               lightDir = new Vector3(1, 1, 1).normalize();
             }
           }
 
-          // Transform light direction to view space (MeshNormalMaterial outputs view-space normals)
-          // Apply camera's view matrix rotation to the light direction
+          // Transform to view space (MeshNormalMaterial gives view-space normals)
           lightDir = lightDir.clone().transformDirection(camera.matrixWorldInverse);
-          // Negate entire vector - coordinate convention mismatch between world and encoded normals
-          lightDir.negate();
-          lightDir.normalize();
         }
 
         regions.forEach((region, idx) => {
-          // Compute brightness for this region (Lambertian)
+          // Compute brightness: N·L (Lambertian)
           let brightness = null;
           if (lightDir && shadingOpts.enabled) {
-            // Base Lambertian term (0-1)
-            let lambertian = Math.max(0, region.normal.dot(lightDir));
-
-            // Intensity affects contrast: higher intensity = brighter highlights
-            // Normalize intensity (assume 50 as baseline, scale to 0-1 contrast range)
-            const intensityFactor = (shadingOpts.intensity || 50) / 50;
-            brightness = Math.min(1, lambertian * intensityFactor);
+            brightness = Math.max(0, region.normal.dot(lightDir));
           }
+
+          // Time budget for this region (abort if taking too long)
+          const regionStartTime = performance.now();
+          const regionTimeBudget = _this.hatchOptions.regionTimeBudget || 100; // ms per region
 
           let hatches = generatePerspectiveHatches(region, camera, {
             baseSpacing: _this.hatchOptions.baseSpacing,
@@ -282,26 +277,64 @@ var PlotterRenderer = function () {
             invertBrightness: shadingOpts.invert || false
           });
 
-          // Clip against front regions
+          // Check time budget after hatch generation
+          if (performance.now() - regionStartTime > regionTimeBudget) {
+            console.warn(`Region ${idx} hatch generation exceeded time budget, skipping`);
+            return; // Skip this region entirely
+          }
+
+          // Clip against front regions (with time budget check)
           for (let frontIdx = 0; frontIdx < idx; frontIdx++) {
             hatches = hatches.flatMap(hatch =>
               clipLineOutsidePolygon(hatch, allRegionBounds[frontIdx])
             );
+
+            // Check time budget during clipping
+            if (performance.now() - regionStartTime > regionTimeBudget) {
+              console.warn(`Region ${idx} clipping exceeded time budget, aborting`);
+              hatches = []; // Clear hatches and bail
+              break;
+            }
           }
 
-          // Draw hatches
+          // Draw hatches (boustrophedon: flip alternating lines to minimize pen travel)
           const hatchTheme = _this.themes[_this.theme] || _this.themes.dark;
           const hatchStroke = _this.hatchOptions.stroke || hatchTheme.hatchStroke;
 
-          hatches.forEach(hatch => {
+          if (_this.hatchOptions.connectHatches && hatches.length > 0) {
+            // Connect all hatches into one continuous polyline
             const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-            const d = `M${lop(hatch.start.x)},${lop(-hatch.start.y)}L${lop(hatch.end.x)},${lop(-hatch.end.y)}`;
+            let d = "";
+            hatches.forEach((hatch, hatchIdx) => {
+              const start = hatchIdx % 2 === 0 ? hatch.start : hatch.end;
+              const end = hatchIdx % 2 === 0 ? hatch.end : hatch.start;
+              if (hatchIdx === 0) {
+                d += `M${lop(start.x)},${lop(-start.y)}`;
+              } else {
+                d += `L${lop(start.x)},${lop(-start.y)}`;  // Connect to next hatch start
+              }
+              d += `L${lop(end.x)},${lop(-end.y)}`;
+            });
             path.setAttribute("d", d);
             path.setAttribute("fill", "none");
             path.setAttribute("stroke", hatchStroke);
             path.setAttribute("stroke-width", _this.hatchOptions.strokeWidth);
             _shading.appendChild(path);
-          });
+          } else {
+            // Individual hatch lines
+            hatches.forEach((hatch, hatchIdx) => {
+              const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+              // Flip start/end on odd indices for zigzag pen path
+              const start = hatchIdx % 2 === 0 ? hatch.start : hatch.end;
+              const end = hatchIdx % 2 === 0 ? hatch.end : hatch.start;
+              const d = `M${lop(start.x)},${lop(-start.y)}L${lop(end.x)},${lop(-end.y)}`;
+              path.setAttribute("d", d);
+              path.setAttribute("fill", "none");
+              path.setAttribute("stroke", hatchStroke);
+              path.setAttribute("stroke-width", _this.hatchOptions.strokeWidth);
+              _shading.appendChild(path);
+            });
+          }
         });
       }
     }

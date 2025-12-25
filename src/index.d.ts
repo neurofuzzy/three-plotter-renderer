@@ -25,6 +25,7 @@ export interface HatchOptions {
     insetPixels?: number;
     stroke?: string;
     strokeWidth?: string;
+    regionTimeBudget?: number;  // Max ms per region before aborting (default: 100)
     axisSettings?: {
         x?: { rotation?: number; spacing?: number };
         y?: { rotation?: number; spacing?: number };

@@ -108,21 +108,44 @@ export function generatePerspectiveHatches(region, camera, options = {}) {
     const { boundary, normal, depth = 0.5 } = region;
     if (boundary.length < 3) return [];
 
-    // Determine dominant axis
-    const ax = Math.abs(normal.x);
-    const ay = Math.abs(normal.y);
-    const az = Math.abs(normal.z);
+    // Normal is now in WORLD SPACE (from custom shader in gpu-silhouette)
+    // Quantize to avoid floating-point variations for same-facing faces
+    const qx = Math.round(normal.x * 10) / 10;
+    const qy = Math.round(normal.y * 10) / 10;
+    const qz = Math.round(normal.z * 10) / 10;
 
-    let axis = 'y'; // default up
-    if (ax >= ay && ax >= az) axis = 'x';
-    else if (az >= ay && az >= ax) axis = 'z';
+    // Blend axis settings based on world-space normal alignment
+    const ax = Math.abs(qx);
+    const ay = Math.abs(qy);
+    const az = Math.abs(qz);
+    const total = ax + ay + az || 1;  // Avoid divide by zero
 
-    // Get settings for this axis
-    const settings = axisSettings[axis] || {};
-    const rotationDeg = settings.rotation || 0;
-    const spacingOverride = settings.spacing;
+    // Weight for each axis
+    const wx = ax / total;
+    const wy = ay / total;
+    const wz = az / total;
 
-    console.log(`[Hatch] normal=(${normal.x.toFixed(2)}, ${normal.y.toFixed(2)}, ${normal.z.toFixed(2)}) => axis=${axis}, rotation=${rotationDeg}, spacing=${spacingOverride}`);
+    // Debug: Log first 5 regions
+    if (region.regionId <= 5) {
+        console.log(`[Hatch] Region ${region.regionId}: normal=(${normal.x.toFixed(2)}, ${normal.y.toFixed(2)}, ${normal.z.toFixed(2)}) → quantized=(${qx}, ${qy}, ${qz}) → weights=(wx:${wx.toFixed(2)}, wy:${wy.toFixed(2)}, wz:${wz.toFixed(2)})`);
+    }
+
+    // Get settings for each axis (defaults)
+    const xSettings = axisSettings.x || { rotation: 0, spacing: baseSpacing };
+    const ySettings = axisSettings.y || { rotation: 0, spacing: baseSpacing };
+    const zSettings = axisSettings.z || { rotation: 0, spacing: baseSpacing };
+
+    // Blend spacing
+    const spacingOverride =
+        wx * (xSettings.spacing || baseSpacing) +
+        wy * (ySettings.spacing || baseSpacing) +
+        wz * (zSettings.spacing || baseSpacing);
+
+    // Blend rotation (weighted average)
+    const rotationDeg =
+        wx * (xSettings.rotation || 0) +
+        wy * (ySettings.rotation || 0) +
+        wz * (zSettings.rotation || 0);
 
     // Get hatch direction from normal
     const { direction, vanishingPoint } = computeHatchDirection(

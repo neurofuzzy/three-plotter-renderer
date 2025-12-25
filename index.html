@@ -309,6 +309,9 @@
                         </div>
                     </div>
                 </div>
+                <div class="control-row">
+                    <label><input type="checkbox" id="connectHatches"> Connect Lines</label>
+                </div>
             </div>
 
             <!-- Lighting Section -->
@@ -350,7 +353,7 @@
                 <div class="control-row">
                     <span class="control-label">Intensity</span>
                     <div class="input-group">
-                        <input type="number" id="lightIntensity" value="50" step="5" min="0"
+                        <input type="number" id="lightIntensity" value="1" step="0.1" min="0.1"
                             title="Light Intensity (affects contrast)">
                     </div>
                 </div>
@@ -553,12 +556,13 @@
             plotterRenderer.hatchOptions.brightnessShading = {
                 enabled: document.getElementById('brightnessShading').checked,
                 invert: !isLightTheme,  // Dark theme = invert (bright faces get fewer hatches)
-                intensity: parseFloat(document.getElementById('lightIntensity').value) || 50
+                intensity: parseFloat(document.getElementById('lightIntensity').value) || 1
             };
 
             // Configure min/max spacing for brightness-based hatching
             plotterRenderer.hatchOptions.minSpacing = parseFloat(document.getElementById('minSpacing').value) || 3;
             plotterRenderer.hatchOptions.maxSpacing = parseFloat(document.getElementById('maxSpacing').value) || 40;
+            plotterRenderer.hatchOptions.connectHatches = document.getElementById('connectHatches').checked;
 
             // Update matrices
             primitives.forEach(m => m.updateMatrixWorld(true));

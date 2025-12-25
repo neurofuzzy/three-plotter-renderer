@@ -17,6 +17,7 @@ import {
     ShaderMaterial,
     RGBADepthPacking,
     NearestFilter,
+    FrontSide,
     Vector2,
     Vector3
 } from 'three';
@@ -64,7 +65,7 @@ export function extractNormalRegions(renderer, scene, camera, options = {}) {
 
     // Step 3: Connected component labeling on ORIGINAL (non-eroded) regions
     // This gives us the true silhouette boundaries
-    const { labels, regionCount } = connectedComponents(regionMap, width, height);
+    const { labels, regionCount, labelToNormalId } = connectedComponents(regionMap, width, height);
 
     // Step 3.5: Apply erosion for insetting (only affects hatch clipping, not boundaries)
     let erodedRegionMap = regionMap;
@@ -84,9 +85,9 @@ export function extractNormalRegions(renderer, scene, camera, options = {}) {
 
         if (area < minArea) continue;
 
-
-        // Find the normal for this region (sample from center)
-        const normal = findRegionNormal(labels, regionMap, normalLookup, width, height, regionId);
+        // Get normal directly from the mapping (no sampling needed!)
+        const normalId = labelToNormalId[regionId];
+        const normal = normalLookup[normalId] || new Vector3(0, 0, 1);
 
         // Sample depth at region center
         const depth = sampleRegionDepth(labels, depthPixels, width, height, regionId);
@@ -108,17 +109,41 @@ export function extractNormalRegions(renderer, scene, camera, options = {}) {
 }
 
 /**
- * Render normals to pixel buffer
+ * Render normals to pixel buffer (exported for debugging)
  */
-function renderNormals(renderer, scene, camera, width, height) {
+export function renderNormals(renderer, scene, camera, width, height) {
     const target = new WebGLRenderTarget(width, height, {
         minFilter: NearestFilter,
         magFilter: NearestFilter
     });
 
-    // Use MeshNormalMaterial for normal extraction
-    // Note: This outputs VIEW SPACE normals, not world space
-    const normalMaterial = new MeshNormalMaterial({ flatShading: true });
+    // Custom shader that outputs WORLD SPACE normals (not view space)
+    // We use normalMatrix (object→view) then transform view→world
+    const worldNormalMaterial = new ShaderMaterial({
+        uniforms: {
+            objectWorldMatrix: { value: null }
+        },
+        vertexShader: `
+            varying vec3 vWorldNormal;
+            uniform mat4 objectWorldMatrix;
+            
+            void main() {
+                // Transform normal to world space using the object's world matrix
+                vec3 transformedNormal = normalize(mat3(objectWorldMatrix) * normal);
+                vWorldNormal = transformedNormal;
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            }
+        `,
+        fragmentShader: `
+            varying vec3 vWorldNormal;
+            void main() {
+                // Encode world normal as RGB: (n + 1) / 2
+                vec3 n = normalize(vWorldNormal);
+                gl_FragColor = vec4(n * 0.5 + 0.5, 1.0);
+            }
+        `,
+        side: FrontSide
+    });
 
     const originalMaterials = new Map();
     const hiddenObjects = [];
@@ -146,7 +171,19 @@ function renderNormals(renderer, scene, camera, width, height) {
         // Only render Mesh objects, hide helpers/lines
         if (obj.isMesh) {
             originalMaterials.set(obj, obj.material);
-            obj.material = normalMaterial;
+            // Clone material and set this object's world matrix
+            const meshMaterial = worldNormalMaterial.clone();
+            obj.updateMatrixWorld(true);
+
+            // Ensure geometry has normals
+            if (obj.geometry && !obj.geometry.attributes.normal) {
+                obj.geometry.computeVertexNormals();
+            }
+
+            // Update uniform value (don't replace uniforms object)
+            meshMaterial.uniforms.objectWorldMatrix.value = obj.matrixWorld;
+            meshMaterial.uniformsNeedUpdate = true;
+            obj.material = meshMaterial;
         } else if (obj.isLineSegments || obj.isLine || obj.isPoints) {
             // Hide grid helpers, line helpers, etc.
             if (obj.visible) {
@@ -183,7 +220,7 @@ function renderNormals(renderer, scene, camera, width, height) {
     renderer.readRenderTargetPixels(target, 0, 0, width, height, pixels);
 
     target.dispose();
-    normalMaterial.dispose();
+    worldNormalMaterial.dispose();
 
     return pixels;
 }
@@ -434,8 +471,9 @@ function connectedComponents(regionMap, width, height) {
         }
     }
 
-    // Second pass: flatten labels
+    // Second pass: flatten labels and track which normalId each label maps to
     const labelRemap = {};
+    const labelToNormalId = {}; // Maps final label -> regionMap value (normalId)
     let finalLabel = 0;
 
     for (let i = 0; i < width * height; i++) {
@@ -444,11 +482,13 @@ function connectedComponents(regionMap, width, height) {
         if (labelRemap[root] === undefined) {
             finalLabel++;
             labelRemap[root] = finalLabel;
+            // Capture the normalId for this label (from regionMap)
+            labelToNormalId[finalLabel] = regionMap[i];
         }
         labels[i] = labelRemap[root];
     }
 
-    return { labels, regionCount: finalLabel };
+    return { labels, regionCount: finalLabel, labelToNormalId };
 }
 
 /**
