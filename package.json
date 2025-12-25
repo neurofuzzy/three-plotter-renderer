@@ -54,11 +54,12 @@
     "node": ">=18"
   },
   "devDependencies": {
+    "jsdom": "^27.3.0",
     "vite": "^5.0.0",
     "vitest": "^1.0.0"
   },
   "dependencies": {
-    "three": "^0.160.0"
+    "three": ">=0.120.0"
   },
   "peerDependencies": {
     "three": ">=0.120.0"
