@@ -294,8 +294,45 @@
 
             console.time('Render');
 
-            // --- Layer 1 & 2: Silhouettes and Edges ---
-            if (showSilhouettes || showEdges) {
+            // --- Layer 1: GPU Silhouettes (Region Boundaries) ---
+            if (showSilhouettes) {
+                console.time('GPU Silhouettes');
+                const regions = extractNormalRegions(renderer, scene, camera, {
+                    normalBuckets: 12,
+                    simplifyTolerance: 2.0,
+                    minArea: 100
+                });
+
+                // Draw each region boundary as a polygon stroke
+                regions.forEach(region => {
+                    if (region.boundary.length < 3) return;
+
+                    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                    let d = '';
+                    region.boundary.forEach((pt, i) => {
+                        const x = pt.x + w2;
+                        const y = -pt.y + h2;  // GPU regions use different Y convention
+                        d += (i === 0 ? 'M' : 'L') + x.toFixed(1) + ',' + y.toFixed(1);
+                    });
+                    d += 'Z';
+
+                    // Color based on normal direction
+                    const n = region.normal;
+                    const r = Math.floor((n.x * 0.5 + 0.5) * 255);
+                    const g = Math.floor((n.y * 0.5 + 0.5) * 255);
+                    const b = Math.floor((n.z * 0.5 + 0.5) * 255);
+
+                    path.setAttribute('d', d);
+                    path.setAttribute('fill', `rgba(${r},${g},${b},0.3)`);
+                    path.setAttribute('stroke', 'none');
+                    svg.appendChild(path);
+                });
+                console.timeEnd('GPU Silhouettes');
+                console.log(`Drew ${regions.length} GPU silhouette regions`);
+            }
+
+            // --- Layer 2: Hidden Line Edges ---
+            if (showEdges) {
                 console.time('Hidden Lines');
                 const result = computeHiddenLinesMultiple([mesh], camera, scene, {
                     smoothThreshold: 0.99,
@@ -306,20 +343,16 @@
                 console.timeEnd('Hidden Lines');
 
                 edges.forEach(edge => {
-                    const isSil = edge.isProfile;
-                    // Filter based on checkboxes
-                    if (isSil && !showSilhouettes) return;
-                    if (!isSil && !showEdges) return;
-
                     const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
                     line.setAttribute('x1', edge.a.x + w2);
                     line.setAttribute('y1', edge.a.y + h2);
                     line.setAttribute('x2', edge.b.x + w2);
                     line.setAttribute('y2', edge.b.y + h2);
-                    line.setAttribute('stroke', isSil ? 'white' : '#ccc');
-                    line.setAttribute('stroke-width', isSil ? '1.5' : '1');
+                    line.setAttribute('stroke', '#ccc');
+                    line.setAttribute('stroke-width', '1');
                     svg.appendChild(line);
                 });
+                console.log(`Drew ${edges.length} hidden line edges`);
             }
 
             // --- Layer 3: Hatches ---
