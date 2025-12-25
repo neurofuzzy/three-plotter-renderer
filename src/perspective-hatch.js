@@ -108,11 +108,14 @@ export function generatePerspectiveHatches(region, camera, options = {}) {
     const { boundary, normal, depth = 0.5 } = region;
     if (boundary.length < 3) return [];
 
-    // Normal is now in WORLD SPACE (from custom shader in gpu-silhouette)
+    // Normal is in VIEW SPACE (from MeshNormalMaterial)
+    // Transform to WORLD SPACE using camera quaternion
+    const worldNormal = normal.clone().applyQuaternion(camera.quaternion);
+
     // Quantize to avoid floating-point variations for same-facing faces
-    const qx = Math.round(normal.x * 10) / 10;
-    const qy = Math.round(normal.y * 10) / 10;
-    const qz = Math.round(normal.z * 10) / 10;
+    const qx = Math.round(worldNormal.x * 10) / 10;
+    const qy = Math.round(worldNormal.y * 10) / 10;
+    const qz = Math.round(worldNormal.z * 10) / 10;
 
     // Blend axis settings based on world-space normal alignment
     const ax = Math.abs(qx);
@@ -127,7 +130,7 @@ export function generatePerspectiveHatches(region, camera, options = {}) {
 
     // Debug: Log first 5 regions
     if (region.regionId <= 5) {
-        console.log(`[Hatch] Region ${region.regionId}: normal=(${normal.x.toFixed(2)}, ${normal.y.toFixed(2)}, ${normal.z.toFixed(2)}) → quantized=(${qx}, ${qy}, ${qz}) → weights=(wx:${wx.toFixed(2)}, wy:${wy.toFixed(2)}, wz:${wz.toFixed(2)})`);
+        console.log(`[Hatch] Region ${region.regionId}: viewNormal=(${normal.x.toFixed(2)}, ${normal.y.toFixed(2)}, ${normal.z.toFixed(2)}) -> worldNormal=(${qx}, ${qy}, ${qz}) -> weights=(wx:${wx.toFixed(2)}, wy:${wy.toFixed(2)}, wz:${wz.toFixed(2)})`);
     }
 
     // Get settings for each axis (defaults)

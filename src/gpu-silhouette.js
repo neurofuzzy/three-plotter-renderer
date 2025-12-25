@@ -117,33 +117,9 @@ export function renderNormals(renderer, scene, camera, width, height) {
         magFilter: NearestFilter
     });
 
-    // Custom shader that outputs WORLD SPACE normals (not view space)
-    // We use normalMatrix (object→view) then transform view→world
-    const worldNormalMaterial = new ShaderMaterial({
-        uniforms: {
-            objectWorldMatrix: { value: null }
-        },
-        vertexShader: `
-            varying vec3 vWorldNormal;
-            uniform mat4 objectWorldMatrix;
-            
-            void main() {
-                // Transform normal to world space using the object's world matrix
-                vec3 transformedNormal = normalize(mat3(objectWorldMatrix) * normal);
-                vWorldNormal = transformedNormal;
-                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-            }
-        `,
-        fragmentShader: `
-            varying vec3 vWorldNormal;
-            void main() {
-                // Encode world normal as RGB: (n + 1) / 2
-                vec3 n = normalize(vWorldNormal);
-                gl_FragColor = vec4(n * 0.5 + 0.5, 1.0);
-            }
-        `,
-        side: FrontSide
-    });
+    // Use MeshNormalMaterial for normal extraction
+    // This outputs VIEW SPACE normals - we'll transform to world space later
+    const normalMaterial = new MeshNormalMaterial({ flatShading: true });
 
     const originalMaterials = new Map();
     const hiddenObjects = [];
@@ -171,19 +147,7 @@ export function renderNormals(renderer, scene, camera, width, height) {
         // Only render Mesh objects, hide helpers/lines
         if (obj.isMesh) {
             originalMaterials.set(obj, obj.material);
-            // Clone material and set this object's world matrix
-            const meshMaterial = worldNormalMaterial.clone();
-            obj.updateMatrixWorld(true);
-
-            // Ensure geometry has normals
-            if (obj.geometry && !obj.geometry.attributes.normal) {
-                obj.geometry.computeVertexNormals();
-            }
-
-            // Update uniform value (don't replace uniforms object)
-            meshMaterial.uniforms.objectWorldMatrix.value = obj.matrixWorld;
-            meshMaterial.uniformsNeedUpdate = true;
-            obj.material = meshMaterial;
+            obj.material = normalMaterial;
         } else if (obj.isLineSegments || obj.isLine || obj.isPoints) {
             // Hide grid helpers, line helpers, etc.
             if (obj.visible) {
@@ -220,7 +184,7 @@ export function renderNormals(renderer, scene, camera, width, height) {
     renderer.readRenderTargetPixels(target, 0, 0, width, height, pixels);
 
     target.dispose();
-    worldNormalMaterial.dispose();
+    normalMaterial.dispose();
 
     return pixels;
 }
