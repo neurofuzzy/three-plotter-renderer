@@ -1,16 +1,15 @@
 import { Segment, Point, GeomUtil } from "./geom/geom.js";
 import { PolygonShape } from "./geom/shapes.js";
-import { BooleanShape } from "./geom/booleanshape.js";
 
 export class Analyzer {
-  
+
   /**
    * @property {Segment[]} segs
    * @property {boolean} splitTeeIntersections
    * @returns {{ originalPts: Object.<string, Point>, pts: string[], cxs: Object.<string,string[]> }}
    */
-  static getSegsAndConnections (segs, splitTeeIntersections = false, splitCrossIntersections = false) {
-    
+  static getSegsAndConnections(segs, splitTeeIntersections = false, splitCrossIntersections = false) {
+
     /** @type {Object.<string,string[]>} */
     let cxs = {};
     /** @type {string[]} */
@@ -29,9 +28,9 @@ export class Analyzer {
       // step 0, split segments that cross a point (T intersections);
 
       let allPts = segs.reduce((arr, seg) => arr.concat(seg.a, seg.b), []);
-      let j = allPts.length; 
+      let j = allPts.length;
 
-      while(j--) {
+      while (j--) {
         let ptA = allPts[j];
         let i = j;
         while (i--) {
@@ -65,7 +64,7 @@ export class Analyzer {
             const da = GeomUtil.distanceBetweenSquared(ptA, seg.a);
             const db = GeomUtil.distanceBetweenSquared(ptB, seg.a);
             if (da < db) {
-              return -1; 
+              return -1;
             } else if (da > db) {
               return 1;
             }
@@ -136,7 +135,7 @@ export class Analyzer {
       }
     });
 
-    return { 
+    return {
       originalPts,
       pts,
       cxs
@@ -149,7 +148,7 @@ export class Analyzer {
    * @property {boolean} splitTeeIntersections
    * @returns {Segment[]}
    */
-  static pathOrder (segs, splitTeeIntersections = false, splitCrossIntersections = false) {
+  static pathOrder(segs, splitTeeIntersections = false, splitCrossIntersections = false) {
 
     let res = [];
     let { originalPts, pts, cxs } = Analyzer.getSegsAndConnections(segs, splitTeeIntersections, splitCrossIntersections);
@@ -183,7 +182,7 @@ export class Analyzer {
       while (ptA) {
 
         if (cxs[ptA].length) {
-          
+
           cxs[ptA].sort(byNumConnections);
           let ptB = cxs[ptA].shift();
 
@@ -217,7 +216,7 @@ export class Analyzer {
    * @property {number} offset
    * @returns {Point[]}
    */
-  static getEndingSegmentPoints (segs, offset = 0) {
+  static getEndingSegmentPoints(segs, offset = 0) {
 
     segs = segs.concat();
     segs = Analyzer.pathOrder(segs, true, true);
@@ -229,12 +228,12 @@ export class Analyzer {
     };
 
     // return all points with one connection
-    
+
     const endTokens = pts.filter(ta => cxs[ta].length === 1);
 
     const out = [];
     endTokens.forEach(tb => {
-      const ptB = Point.clone(nekot(tb) );
+      const ptB = Point.clone(nekot(tb));
       if (offset === 0) {
         out.push(ptB);
         return;
@@ -256,7 +255,7 @@ export class Analyzer {
    * @property {number} searchMultiplier multiple of typical segmentation distance to search for flood-fill points
    * @returns {Point[][]}
    */
-  static getFills (segs, searchMultiplier = 5) {
+  static getFills(segs, searchMultiplier = 5) {
 
     segs = segs.concat();
 
@@ -274,7 +273,7 @@ export class Analyzer {
     // 1. iterate through all points
     // 2. for each point pick a each connection
     // 3. for each pair, proceed to find a winding polygon
-    
+
     let minX = 100000;
     let minY = 100000;
     let maxX = -100000;
@@ -421,23 +420,6 @@ export class Analyzer {
     });
 
     return pointGroups;
-
-  }
-
-  /**
-   * @param {Point[][]} fills
-   * @returns {Segment[]}
-   */
-  static getFillsOutline (fills) {
-    
-    let outlineShape = new BooleanShape();
-
-    fills.forEach(fillPts => {
-      let fill = new PolygonShape(fillPts);
-      outlineShape.add(fill);
-    });
-
-    return outlineShape.toSegments();
 
   }
 

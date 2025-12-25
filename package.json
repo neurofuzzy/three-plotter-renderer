@@ -1,11 +1,30 @@
 {
   "name": "three-plotter-renderer",
-  "version": "0.0.1",
-  "description": "An SVG renderer with occlusion for plotters and SVG editors",
-  "main": "dist/three-plotter-renderer.js",
-  "module": "src/plotter-renderer.js",
+  "version": "1.0.0",
+  "description": "An SVG renderer for Three.js with hidden line removal - designed for pen plotters and laser cutters",
+  "type": "module",
+  "main": "dist/three-plotter-renderer.umd.js",
+  "module": "dist/three-plotter-renderer.es.js",
+  "exports": {
+    ".": {
+      "import": "./dist/three-plotter-renderer.es.js",
+      "require": "./dist/three-plotter-renderer.umd.js",
+      "types": "./src/index.d.ts"
+    }
+  },
+  "types": "src/index.d.ts",
+  "files": [
+    "dist",
+    "src"
+  ],
+  "sideEffects": false,
   "scripts": {
-    "build": "NODE_ENV=npm parcel build ./src/three-plotter-renderer.js --no-source-maps"
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "prepublishOnly": "npm run build"
   },
   "repository": {
     "type": "git",
@@ -14,8 +33,15 @@
   "keywords": [
     "svg",
     "plotter",
+    "pen-plotter",
+    "laser-cutter",
     "renderer",
     "three.js",
+    "threejs",
+    "hidden-line-removal",
+    "occlusion",
+    "vector",
+    "graphics",
     "clipper"
   ],
   "author": "Geoff Gaudreault",
@@ -24,13 +50,18 @@
     "url": "https://github.com/neurofuzzy/three-plotter-renderer/issues"
   },
   "homepage": "https://github.com/neurofuzzy/three-plotter-renderer#readme",
-  "externals": "./externals.js",
+  "engines": {
+    "node": ">=18"
+  },
   "devDependencies": {
-    "parcel-bundler": "^1.12.4",
-    "parcel-plugin-externals": "^0.5.1"
+    "jsdom": "^27.3.0",
+    "vite": "^5.0.0",
+    "vitest": "^1.0.0"
   },
   "dependencies": {
-    "js-angusj-clipper": "^1.1.0",
-    "three": "^0.120.1"
+    "three": ">=0.120.0"
+  },
+  "peerDependencies": {
+    "three": ">=0.120.0"
   }
 }

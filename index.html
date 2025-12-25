@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>Primitives Hatching Test</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg-dark: #1a1a2e;
+            --bg-glass: rgba(22, 33, 62, 0.85);
+            --accent: #0f3460;
+            --accent-hover: #e94560;
+            --text: #eaeaea;
+            --text-muted: #a0a0a0;
+            --border: rgba(255, 255, 255, 0.1);
+        }
+
+        body {
+            overflow: hidden;
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background: var(--bg-dark);
+            color: var(--text);
+        }
+
+        #info {
+            position: absolute;
+            top: 16px;
+            left: 16px;
+            background: var(--bg-glass);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 16px 20px;
+            z-index: 100;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            max-width: 90vw;
+        }
+
+        #info .controls {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        #info button,
+        #info select {
+            padding: 10px 18px;
+            font-size: 14px;
+            cursor: pointer;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            background: var(--accent);
+            color: var(--text);
+            transition: all 0.2s ease;
+            font-family: inherit;
+        }
+
+        #info button:hover,
+        #info select:hover {
+            background: var(--accent-hover);
+            border-color: var(--accent-hover);
+        }
+
+        .control-group {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            margin-left: 10px;
+            border-left: 1px solid var(--border);
+            padding-left: 10px;
+        }
+
+        .input-label {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+        }
+
+        input[type="number"] {
+            width: 50px;
+            padding: 6px;
+            border-radius: 4px;
+            border: 1px solid var(--border);
+            background: rgba(0, 0, 0, 0.2);
+            color: var(--text);
+        }
+
+        #stats {
+            margin-top: 12px;
+            font-size: 13px;
+            color: var(--text-muted);
+        }
+
+        canvas {
+            display: block;
+        }
+
+        #svg-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            pointer-events: none;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="info">
+        <div class="controls">
+            <span style="font-weight: 500; margin-right: 8px;">Primitives</span>
+
+            <div class="control-group">
+                <span class="input-label" title="Hatch Rotation (Deg)">Rotation:</span>
+                <input type="number" id="rotX" value="0" title="X Axis Rotation">
+                <input type="number" id="rotY" value="0" title="Y Axis Rotation">
+                <input type="number" id="rotZ" value="0" title="Z Axis Rotation">
+            </div>
+
+            <div class="control-group">
+                <span class="input-label" title="Spacing (screen px)">Spacing:</span>
+                <input type="number" id="spaceX" value="8" step="1" title="X Axis Spacing">
+                <input type="number" id="spaceY" value="8" step="1" title="Y Axis Spacing">
+                <input type="number" id="spaceZ" value="8" step="1" title="Z Axis Spacing">
+            </div>
+
+            <div class="control-group">
+                <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
+                    <input type="checkbox" id="showSilhouettes" checked> Silhouettes
+                </label>
+                <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
+                    <input type="checkbox" id="showEdges" checked> Edges
+                </label>
+                <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
+                    <input type="checkbox" id="showHatches" checked> Hatches
+                </label>
+            </div>
+
+            <button id="renderBtn" style="background: #2d8a5a; font-weight: bold; margin-left: 10px;">Render</button>
+            <button id="exportBtn">Export SVG</button>
+        </div>
+        <div id="stats">Use mouse to orbit. Click Render to generate hidden lines.</div>
+    </div>
+
+    <svg id="svg-overlay" xmlns="http://www.w3.org/2000/svg"></svg>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+        import { PlotterRenderer } from './src/plotter-renderer.js';
+
+        let scene, camera, glRenderer, controls;
+        let plotterRenderer;
+        let primitives = [];
+
+        function init() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x222222);
+
+            camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 1, 1000);
+            camera.position.set(8, 6, 10);
+
+            // WebGL renderer for 3D preview
+            glRenderer = new THREE.WebGLRenderer({ antialias: true });
+            glRenderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(glRenderer.domElement);
+
+            // PlotterRenderer for SVG output
+            plotterRenderer = new PlotterRenderer();
+            plotterRenderer.setSize(window.innerWidth, window.innerHeight);
+            plotterRenderer.setGLRenderer(glRenderer);
+
+            controls = new OrbitControls(camera, glRenderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+
+            // Lighting
+            const light = new THREE.DirectionalLight(0xffffff, 1);
+            light.position.set(5, 5, 5);
+            scene.add(light);
+            scene.add(new THREE.AmbientLight(0x404040));
+
+            // Materials - Flat shading for proper detection
+            const material = new THREE.MeshPhongMaterial({
+                color: 0x44aa88,
+                flatShading: true,
+                shininess: 0
+            });
+
+            // 1. Pyramid (X-axis/Z-axis faces mainly)
+            const pyramidGeom = new THREE.ConeGeometry(1.5, 2.5, 4);
+            const pyramid = new THREE.Mesh(pyramidGeom, material.clone());
+            pyramid.material.color.set(0xff6644);
+            pyramid.position.set(-4, 1.25, 0);
+            scene.add(pyramid);
+            primitives.push(pyramid);
+
+            // 2. Cylinder (Sides are radial, Top is Y-axis)
+            const cylinderGeom = new THREE.CylinderGeometry(1, 1, 2.5, 12);
+            const cylinder = new THREE.Mesh(cylinderGeom, material.clone());
+            cylinder.material.color.set(0x44ff66);
+            cylinder.position.set(0, 1.25, 0);
+            scene.add(cylinder);
+            primitives.push(cylinder);
+
+            // 3. Icosahedron (Multi-faceted)
+            const icoGeom = new THREE.IcosahedronGeometry(1.5, 0);
+            const sphere = new THREE.Mesh(icoGeom, material.clone());
+            sphere.material.color.set(0x4466ff);
+            sphere.position.set(4, 1.5, 0);
+            scene.add(sphere);
+            primitives.push(sphere);
+
+            // Floor grid
+            const gridHelper = new THREE.GridHelper(20, 20, 0x444444, 0x333333);
+            scene.add(gridHelper);
+
+            // Event listeners
+            window.addEventListener('resize', onResize);
+            document.getElementById('renderBtn').addEventListener('click', render);
+            document.getElementById('exportBtn').addEventListener('click', exportSVG);
+
+            animate();
+        }
+
+        function onResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            glRenderer.setSize(window.innerWidth, window.innerHeight);
+            plotterRenderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function exportSVG() {
+            const svgContent = plotterRenderer.domElement.outerHTML;
+            const blob = new Blob([svgContent], { type: 'image/svg+xml' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'primitives-hidden-lines.svg';
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        function render() {
+            document.getElementById('stats').textContent = 'Rendering...';
+
+            // Configure PlotterRenderer from UI
+            plotterRenderer.showSilhouettes = document.getElementById('showSilhouettes').checked;
+            plotterRenderer.showEdges = document.getElementById('showEdges').checked;
+            plotterRenderer.showHatches = document.getElementById('showHatches').checked;
+
+            // Configure hatch settings from UI inputs
+            plotterRenderer.hatchOptions.axisSettings = {
+                x: {
+                    rotation: parseFloat(document.getElementById('rotX').value) || 0,
+                    spacing: parseFloat(document.getElementById('spaceX').value) || 8
+                },
+                y: {
+                    rotation: parseFloat(document.getElementById('rotY').value) || 0,
+                    spacing: parseFloat(document.getElementById('spaceY').value) || 8
+                },
+                z: {
+                    rotation: parseFloat(document.getElementById('rotZ').value) || 0,
+                    spacing: parseFloat(document.getElementById('spaceZ').value) || 8
+                }
+            };
+
+            // Update matrices
+            primitives.forEach(m => m.updateMatrixWorld(true));
+
+            setTimeout(() => {
+                const startTime = performance.now();
+
+                // Clear and render using PlotterRenderer
+                plotterRenderer.clear();
+                plotterRenderer.renderGPULayers(scene, camera);
+
+                // Copy to SVG overlay
+                const svgOverlay = document.getElementById('svg-overlay');
+                svgOverlay.innerHTML = plotterRenderer.domElement.innerHTML;
+                svgOverlay.setAttribute('width', window.innerWidth);
+                svgOverlay.setAttribute('height', window.innerHeight);
+                svgOverlay.setAttribute('viewBox', plotterRenderer.domElement.getAttribute('viewBox'));
+
+                const elapsed = performance.now() - startTime;
+                document.getElementById('stats').textContent = `Render completed in ${elapsed.toFixed(0)}ms`;
+            }, 50);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            glRenderer.render(scene, camera);
+        }
+
+        init();
+    </script>
+</body>
+
+</html>

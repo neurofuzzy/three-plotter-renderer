@@ -36,11 +36,26 @@ export class Optimize {
    * @param {boolean} [splitTeeIntersections]
    * @returns {Segments}
    */
-  static segments(segs, noSplitColinear = false, trimSmall = true, smallDist= 1, optimizePathOrder = false, splitTeeIntersections = false, splitCrossIntersections = false) {
+  static segments(segs, noSplitColinear = false, trimSmall = true, smallDist = 1, optimizePathOrder = false, splitTeeIntersections = false, splitCrossIntersections = false) {
 
+    segs = Optimize._segments(segs, noSplitColinear, trimSmall, smallDist);
+
+    if (optimizePathOrder) {
+      segs = Analyzer.pathOrder(segs, splitTeeIntersections, splitCrossIntersections);
+    }
+
+    return new Segments(segs);
+  }
+
+  /**
+   * JS fallback for segment optimization  
+   * @private
+   */
+  static _segments(segs, noSplitColinear, trimSmall, smallDist) {
     const sb = segs;
     segs = [];
 
+    // Dedupe
     while (sb.length) {
       let s = sb.shift();
       let n = segs.length
@@ -57,8 +72,9 @@ export class Optimize {
       }
     }
 
+    // Merge colinear
     if (!noSplitColinear) {
-      
+
       for (let n = 0; n < 3; n++) {
         let i = segs.length;
         let overlaps = 0;
@@ -111,7 +127,8 @@ export class Optimize {
       }
 
     }
-    
+
+    // Trim small
     let i = segs.length;
     while (i--) {
       let seg = segs[i];
@@ -125,11 +142,8 @@ export class Optimize {
       }
     }
 
-    if (optimizePathOrder) {
-      segs = Analyzer.pathOrder(segs, splitTeeIntersections, splitCrossIntersections);
-    }
-    
-    return new Segments(segs);
+    console.log(`[JS] Optimize: ${sb.length + segs.length} -> ${segs.length} segments`);
+    return segs;
   }
 
 }

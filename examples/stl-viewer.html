@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>STL Hidden Line Viewer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg-dark: #1a1a2e;
+            --bg-glass: rgba(22, 33, 62, 0.85);
+            --accent: #0f3460;
+            --accent-hover: #e94560;
+            --text: #eaeaea;
+            --text-muted: #a0a0a0;
+            --border: rgba(255, 255, 255, 0.1);
+        }
+
+        body {
+            overflow: hidden;
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background: var(--bg-dark);
+            color: var(--text);
+        }
+
+        #info {
+            position: absolute;
+            top: 16px;
+            left: 16px;
+            background: var(--bg-glass);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 16px 20px;
+            z-index: 100;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+
+        #info .controls {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        #info button,
+        #info select {
+            padding: 10px 18px;
+            font-size: 14px;
+            cursor: pointer;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            background: var(--accent);
+            color: var(--text);
+            transition: all 0.2s ease;
+            font-family: inherit;
+        }
+
+        #info button:hover,
+        #info select:hover {
+            background: var(--accent-hover);
+            border-color: var(--accent-hover);
+        }
+
+        #info select {
+            background: rgba(15, 52, 96, 0.8);
+        }
+
+        #info select option {
+            background: #16213e;
+            color: var(--text);
+        }
+
+        #stats {
+            margin-top: 12px;
+            font-size: 13px;
+            color: var(--text-muted);
+        }
+
+        canvas {
+            display: block;
+        }
+
+        #svg-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            pointer-events: none;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="info">
+        <div class="controls">
+            <select id="modelSelect">
+                <option value="./models/example01.stl">Example 01 (Building)</option>
+                <option value="./models/example02.stl">Example 02 (Complex)</option>
+                <option value="./models/example03.stl" selected>Example 03 (House)</option>
+            </select>
+            <div
+                style="display: flex; gap: 8px; align-items: center; margin-left: 10px; border-left: 1px solid var(--border); padding-left: 10px;">
+                <span title="Hatch Rotation (Deg)">Hatch Rot:</span>
+                <input type="number" id="rotX" value="45"
+                    style="width: 50px; padding: 6px; border-radius: 4px; border: 1px solid var(--border); background: rgba(0,0,0,0.2); color: var(--text);"
+                    title="X Rotation">
+                <input type="number" id="rotY" value="45"
+                    style="width: 50px; padding: 6px; border-radius: 4px; border: 1px solid var(--border); background: rgba(0,0,0,0.2); color: var(--text);"
+                    title="Y Rotation">
+                <input type="number" id="rotZ" value="45"
+                    style="width: 50px; padding: 6px; border-radius: 4px; border: 1px solid var(--border); background: rgba(0,0,0,0.2); color: var(--text);"
+                    title="Z Rotation">
+            </div>
+            <div
+                style="display: flex; gap: 8px; align-items: center; margin-left: 10px; border-left: 1px solid var(--border); padding-left: 10px;">
+                <span title="Absolute Spacing (Units)">Spacing:</span>
+                <input type="number" id="spaceX" value="10.0" step="1.0"
+                    style="width: 50px; padding: 6px; border-radius: 4px; border: 1px solid var(--border); background: rgba(0,0,0,0.2); color: var(--text);"
+                    title="X Spacing">
+                <input type="number" id="spaceY" value="10.0" step="1.0"
+                    style="width: 50px; padding: 6px; border-radius: 4px; border: 1px solid var(--border); background: rgba(0,0,0,0.2); color: var(--text);"
+                    title="Y Spacing">
+                <input type="number" id="spaceZ" value="10.0" step="1.0"
+                    style="width: 50px; padding: 6px; border-radius: 4px; border: 1px solid var(--border); background: rgba(0,0,0,0.2); color: var(--text);"
+                    title="Z Spacing">
+            </div>
+            <button id="exportBtn">Export SVG</button>
+            <div
+                style="display: flex; gap: 12px; align-items: center; margin-left: 10px; border-left: 1px solid var(--border); padding-left: 10px;">
+                <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
+                    <input type="checkbox" id="showSilhouettes" style="cursor: pointer;">
+                    Silhouettes
+                </label>
+                <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
+                    <input type="checkbox" id="showEdges" checked style="cursor: pointer;">
+                    Edges
+                </label>
+                <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
+                    <input type="checkbox" id="showHatches" checked style="cursor: pointer;">
+                    Hatches
+                </label>
+            </div>
+            <button id="renderBtn" style="background: #2d8a5a; font-weight: bold; margin-left: 10px;">Render</button>
+        </div>
+        <div id="stats">Use mouse to orbit, scroll to zoom</div>
+    </div>
+    <svg id="svg-overlay" xmlns="http://www.w3.org/2000/svg"></svg>
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+        import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js';
+        import { PlotterRenderer } from '../src/plotter-renderer.js';
+
+        let scene, camera, glRenderer, controls, mesh;
+        let plotterRenderer;
+
+        // Toggle for debug visualization vs normal output
+        const DEBUG_MODE = false; // Set to true for purple hidden lines + green visible
+
+        function init() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x222222);
+
+            camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 1, 8000);
+            camera.position.set(900, 900, 900);
+
+            // WebGL renderer for 3D preview
+            glRenderer = new THREE.WebGLRenderer({ antialias: true });
+            glRenderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(glRenderer.domElement);
+
+            // PlotterRenderer for SVG output
+            plotterRenderer = new PlotterRenderer();
+            plotterRenderer.setSize(window.innerWidth, window.innerHeight);
+            plotterRenderer.setGLRenderer(glRenderer);
+
+            controls = new OrbitControls(camera, glRenderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+
+            // Lighting
+            const light = new THREE.DirectionalLight(0xffffff, 1);
+            light.position.set(300, 300, 300);
+            scene.add(light);
+            scene.add(new THREE.AmbientLight(0x404040));
+
+            // Event listeners
+            window.addEventListener('resize', onResize);
+
+            document.getElementById('exportBtn').addEventListener('click', exportSVG);
+            document.getElementById('modelSelect').addEventListener('change', (e) => {
+                loadModel(e.target.value);
+            });
+
+            // Render button
+            document.getElementById('renderBtn').addEventListener('click', render);
+            // Load default model
+            loadModel(document.getElementById('modelSelect').value);
+
+            animate();
+        }
+
+        function loadModel(url) {
+            document.getElementById('stats').textContent = 'Loading model...';
+
+            // Clear existing mesh
+            if (mesh) {
+                scene.remove(mesh);
+                mesh.geometry.dispose();
+                mesh.material.dispose();
+                mesh = null;
+            }
+
+            // Clear SVG
+            document.getElementById('svg-overlay').innerHTML = '';
+
+            const loader = new STLLoader();
+            loader.load(url, (geometry) => {
+                geometry.computeBoundingBox();
+                geometry.center();
+
+                // Use flat shading for proper hidden line detection
+                const material = new THREE.MeshPhongMaterial({
+                    color: 0x44aa88,
+                    transparent: true,
+                    opacity: 0.5,
+                    flatShading: true
+                });
+                mesh = new THREE.Mesh(geometry, material);
+                scene.add(mesh);
+
+                document.getElementById('stats').textContent =
+                    `Loaded ${geometry.attributes.position.count / 3} triangles. Click "Render Hidden Lines" when ready.`;
+            });
+        }
+
+        function onResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            glRenderer.setSize(window.innerWidth, window.innerHeight);
+            plotterRenderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        // WASM Full Pipeline
+
+
+
+
+        function exportSVG() {
+            const svgContent = plotterRenderer.domElement.outerHTML;
+            const blob = new Blob([svgContent], { type: 'image/svg+xml' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'hidden-lines.svg';
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+
+
+        /**
+         * Render: Using PlotterRenderer API with toggleable layers
+         */
+        function render() {
+            if (!mesh) {
+                document.getElementById('stats').textContent = 'Please load a model first';
+                return;
+            }
+
+            document.getElementById('stats').textContent = 'Rendering...';
+
+            // Configure PlotterRenderer from UI checkboxes
+            plotterRenderer.showSilhouettes = document.getElementById('showSilhouettes').checked;
+            plotterRenderer.showEdges = document.getElementById('showEdges').checked;
+            plotterRenderer.showHatches = document.getElementById('showHatches').checked;
+
+            // Configure hatch settings from UI inputs
+            plotterRenderer.hatchOptions.axisSettings = {
+                x: {
+                    rotation: parseFloat(document.getElementById('rotX').value) || 0,
+                    spacing: parseFloat(document.getElementById('spaceX').value) || 8
+                },
+                y: {
+                    rotation: parseFloat(document.getElementById('rotY').value) || 0,
+                    spacing: parseFloat(document.getElementById('spaceY').value) || 8
+                },
+                z: {
+                    rotation: parseFloat(document.getElementById('rotZ').value) || 0,
+                    spacing: parseFloat(document.getElementById('spaceZ').value) || 8
+                }
+            };
+
+            console.time('Render');
+
+            // Clear and render using PlotterRenderer
+            plotterRenderer.clear();
+            plotterRenderer.renderGPULayers(scene, camera);
+
+            // Replace the SVG overlay with PlotterRenderer's output
+            const svgOverlay = document.getElementById('svg-overlay');
+            svgOverlay.innerHTML = plotterRenderer.domElement.innerHTML;
+            svgOverlay.setAttribute('width', window.innerWidth);
+            svgOverlay.setAttribute('height', window.innerHeight);
+            svgOverlay.setAttribute('viewBox', plotterRenderer.domElement.getAttribute('viewBox'));
+
+            console.timeEnd('Render');
+            document.getElementById('stats').textContent = 'Render complete';
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            glRenderer.render(scene, camera);
+        }
+
+        init();
+    </script>
+</body>
+
+</html>
