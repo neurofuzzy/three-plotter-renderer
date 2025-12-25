@@ -3,7 +3,7 @@
  * Based on SVGRenderer by @mrdoob / http://mrdoob.com/
  */
 
-import { Camera, Color, Object3D, Vector3 } from "three";
+import { Camera, Color, Object3D, Vector3, DirectionalLight, PointLight, SpotLight } from "three";
 import { extractNormalRegions } from "./gpu-silhouette.js";
 import { generatePerspectiveHatches, clipLineOutsidePolygon } from "./perspective-hatch.js";
 import { computeHiddenLinesMultiple } from "./hidden-line.js";
@@ -61,6 +61,25 @@ var PlotterRenderer = function () {
   this.showEdges = true;
   this.showHatches = true;
 
+  // Theme definitions
+  this.themes = {
+    light: {
+      background: '#ffffff',
+      edgeStroke: '#000000',
+      hatchStroke: '#444444',
+      silhouetteFill: (n) => `rgba(${Math.floor((n.x * 0.5 + 0.5) * 40 + 200)},${Math.floor((n.y * 0.5 + 0.5) * 40 + 200)},${Math.floor((n.z * 0.5 + 0.5) * 40 + 200)},0.3)`
+    },
+    dark: {
+      background: '#222222',
+      edgeStroke: '#ffffff',
+      hatchStroke: '#aaaaaa',
+      silhouetteFill: (n) => `rgba(${Math.floor((n.x * 0.5 + 0.5) * 255)},${Math.floor((n.y * 0.5 + 0.5) * 255)},${Math.floor((n.z * 0.5 + 0.5) * 255)},0.3)`
+    }
+  };
+
+  // Current theme
+  this.theme = 'dark';
+
   // Silhouette options (GPU normal regions)
   this.silhouetteOptions = {
     normalBuckets: 12,
@@ -75,18 +94,24 @@ var PlotterRenderer = function () {
     maxSpacing: 40,
     depthFactor: 0.5,
     insetPixels: 3,
-    stroke: 'black',
+    stroke: null,  // null = use theme
     strokeWidth: '1px',
     axisSettings: {
       x: { rotation: 0, spacing: 8 },
       y: { rotation: 0, spacing: 8 },
       z: { rotation: 0, spacing: 8 }
+    },
+    // Brightness-based shading
+    brightnessShading: {
+      enabled: false,           // Enable lighting-based density
+      invert: false,            // True for white pen on black paper
+      lightDirection: null      // Override: Vector3 or null (auto from scene)
     }
   };
 
   // Edge options (hidden line edges)
   this.edgeOptions = {
-    stroke: 'white',
+    stroke: null,  // null = use theme
     strokeWidth: '1px'
   };
 
@@ -181,14 +206,13 @@ var PlotterRenderer = function () {
           });
           d += "Z";
 
-          // Color based on normal direction
+          // Color based on normal direction (use theme if available)
           const n = region.normal;
-          const r = Math.floor((n.x * 0.5 + 0.5) * 255);
-          const g = Math.floor((n.y * 0.5 + 0.5) * 255);
-          const b = Math.floor((n.z * 0.5 + 0.5) * 255);
+          const currentTheme = _this.themes[_this.theme] || _this.themes.dark;
+          const fillColor = currentTheme.silhouetteFill ? currentTheme.silhouetteFill(n) : `rgba(${Math.floor((n.x * 0.5 + 0.5) * 255)},${Math.floor((n.y * 0.5 + 0.5) * 255)},${Math.floor((n.z * 0.5 + 0.5) * 255)},0.3)`;
 
           path.setAttribute("d", d);
-          path.setAttribute("fill", `rgba(${r},${g},${b},0.3)`);
+          path.setAttribute("fill", fillColor);
           path.setAttribute("stroke", "none");
           _silhouettes.appendChild(path);
         });
@@ -200,7 +224,51 @@ var PlotterRenderer = function () {
         regions.sort((a, b) => a.depth - b.depth);
         const allRegionBounds = regions.map(r => r.boundary);
 
+        // Compute light direction for brightness shading
+        let lightDir = null;
+        const shadingOpts = _this.hatchOptions.brightnessShading || {};
+        if (shadingOpts.enabled) {
+          if (shadingOpts.lightDirection) {
+            lightDir = shadingOpts.lightDirection.clone().normalize();
+          } else {
+            // Auto-detect from scene: find first directional/point/spot light
+            scene.traverse((obj) => {
+              if (lightDir) return; // Already found one
+              if (obj instanceof DirectionalLight) {
+                // Directional light points from position toward target
+                lightDir = new Vector3().subVectors(obj.position, obj.target.position).normalize();
+              } else if (obj instanceof PointLight || obj instanceof SpotLight) {
+                // Use light position as direction from origin
+                lightDir = obj.position.clone().normalize();
+              }
+            });
+            // Fallback: front-top-right
+            if (!lightDir) {
+              lightDir = new Vector3(1, 1, 1).normalize();
+            }
+          }
+
+          // Transform light direction to view space (MeshNormalMaterial outputs view-space normals)
+          // Apply camera's view matrix rotation to the light direction
+          lightDir = lightDir.clone().transformDirection(camera.matrixWorldInverse);
+          // Negate entire vector - coordinate convention mismatch between world and encoded normals
+          lightDir.negate();
+          lightDir.normalize();
+        }
+
         regions.forEach((region, idx) => {
+          // Compute brightness for this region (Lambertian)
+          let brightness = null;
+          if (lightDir && shadingOpts.enabled) {
+            // Base Lambertian term (0-1)
+            let lambertian = Math.max(0, region.normal.dot(lightDir));
+
+            // Intensity affects contrast: higher intensity = brighter highlights
+            // Normalize intensity (assume 50 as baseline, scale to 0-1 contrast range)
+            const intensityFactor = (shadingOpts.intensity || 50) / 50;
+            brightness = Math.min(1, lambertian * intensityFactor);
+          }
+
           let hatches = generatePerspectiveHatches(region, camera, {
             baseSpacing: _this.hatchOptions.baseSpacing,
             minSpacing: _this.hatchOptions.minSpacing,
@@ -209,7 +277,9 @@ var PlotterRenderer = function () {
             insetPixels: _this.hatchOptions.insetPixels,
             screenWidth: _svgWidth,
             screenHeight: _svgHeight,
-            axisSettings: _this.hatchOptions.axisSettings
+            axisSettings: _this.hatchOptions.axisSettings,
+            brightness: brightness,
+            invertBrightness: shadingOpts.invert || false
           });
 
           // Clip against front regions
@@ -220,47 +290,67 @@ var PlotterRenderer = function () {
           }
 
           // Draw hatches
+          const hatchTheme = _this.themes[_this.theme] || _this.themes.dark;
+          const hatchStroke = _this.hatchOptions.stroke || hatchTheme.hatchStroke;
+
           hatches.forEach(hatch => {
             const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
             const d = `M${lop(hatch.start.x)},${lop(-hatch.start.y)}L${lop(hatch.end.x)},${lop(-hatch.end.y)}`;
             path.setAttribute("d", d);
             path.setAttribute("fill", "none");
-            path.setAttribute("stroke", _this.hatchOptions.stroke);
+            path.setAttribute("stroke", hatchStroke);
             path.setAttribute("stroke-width", _this.hatchOptions.strokeWidth);
             _shading.appendChild(path);
           });
         });
       }
+    }
 
-      // Hidden Line Edges (render last so they appear on top)
-      if (_this.showEdges) {
-        // Collect all meshes from scene
-        const meshes = [];
-        scene.traverse((obj) => {
-          if (obj.isMesh && obj.geometry) {
-            meshes.push(obj);
+    // Hidden Line Edges (render last so they appear on top)
+    // This is OUTSIDE the silhouettes/hatches block so edges can render independently
+    if (_this.showEdges) {
+      // Collect all meshes from scene (excluding those marked for SVG exclusion)
+      const meshes = [];
+      scene.traverse((obj) => {
+        if (!obj.isMesh || !obj.geometry) return;
+
+        // Check parent hierarchy for exclusion flag
+        let excluded = false;
+        let parent = obj;
+        while (parent) {
+          if (parent.userData && parent.userData.excludeFromSVG) {
+            excluded = true;
+            break;
           }
-        });
-
-        if (meshes.length > 0) {
-          const result = computeHiddenLinesMultiple(meshes, camera, scene, {
-            smoothThreshold: _this.hiddenLineOptions.smoothThreshold,
-            width: _svgWidth,
-            height: _svgHeight
-          });
-          const edges = result.edges || [];
-
-          edges.forEach(edge => {
-            const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
-            line.setAttribute("x1", lop(edge.a.x));
-            line.setAttribute("y1", lop(edge.a.y));
-            line.setAttribute("x2", lop(edge.b.x));
-            line.setAttribute("y2", lop(edge.b.y));
-            line.setAttribute("stroke", _this.edgeOptions.stroke);
-            line.setAttribute("stroke-width", _this.edgeOptions.strokeWidth);
-            _edges.appendChild(line);
-          });
+          parent = parent.parent;
         }
+
+        if (!excluded) {
+          meshes.push(obj);
+        }
+      });
+
+      if (meshes.length > 0) {
+        const result = computeHiddenLinesMultiple(meshes, camera, scene, {
+          smoothThreshold: _this.hiddenLineOptions.smoothThreshold,
+          width: _svgWidth,
+          height: _svgHeight
+        });
+        const edges = result.edges || [];
+
+        const edgeTheme = _this.themes[_this.theme] || _this.themes.dark;
+        const edgeStroke = _this.edgeOptions.stroke || edgeTheme.edgeStroke;
+
+        edges.forEach(edge => {
+          const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+          line.setAttribute("x1", lop(edge.a.x));
+          line.setAttribute("y1", lop(edge.a.y));
+          line.setAttribute("x2", lop(edge.b.x));
+          line.setAttribute("y2", lop(edge.b.y));
+          line.setAttribute("stroke", edgeStroke);
+          line.setAttribute("stroke-width", _this.edgeOptions.strokeWidth);
+          _edges.appendChild(line);
+        });
       }
     }
   };

@@ -100,7 +100,9 @@ export function generatePerspectiveHatches(region, camera, options = {}) {
         depthFactor = 0.5,    // How much depth affects density
         screenWidth = 1200,
         screenHeight = 800,
-        axisSettings = {}     // { x: { rotation: 0, spacing: 10 }, y: ... }
+        axisSettings = {},    // { x: { rotation: 0, spacing: 10 }, y: ... }
+        brightness = null,    // 0-1 lighting brightness (null = disabled)
+        invertBrightness = false  // True for white-on-black (bright = dense)
     } = options;
 
     const { boundary, normal, depth = 0.5 } = region;
@@ -145,9 +147,34 @@ export function generatePerspectiveHatches(region, camera, options = {}) {
     // Calculate spacing based on depth (closer = denser)
     // Use override if available, otherwise baseSpacing
     const effectiveBase = spacingOverride !== undefined ? spacingOverride : baseSpacing;
-    const spacing = Math.max(minSpacing, Math.min(maxSpacing,
+    let spacing = Math.max(minSpacing, Math.min(maxSpacing,
         effectiveBase + (depth * depthFactor * (maxSpacing - minSpacing))
     ));
+
+    if (brightness !== null && brightness !== undefined) {
+        // brightness: 0 = shadow/dark, 1 = lit/bright
+        // 
+        // For BOTH themes, lit faces should have LESS ink (more spacing):
+        // - Light theme (black ink on white): lit = sparse hatches (more white showing)
+        // - Dark theme (white ink on black): lit = sparse hatches (more black showing)
+        //
+        // invertBrightness: 
+        //   false (light theme) = bright areas get more spacing (less ink)
+        //   true (dark theme) = ALSO bright areas get more spacing (less ink)
+        //
+        // So invert actually controls the paper color interpretation, not the brightness->spacing mapping
+        // Both cases want: bright = more spacing
+
+        // Map brightness to spacing multiplier (0.5x for dark to 2x for bright)
+        const brightnessMultiplier = 0.5 + brightness * 1.5;
+        spacing = spacing * brightnessMultiplier;
+
+        // If spacing exceeds maxSpacing, skip hatching entirely for this region
+        if (spacing > maxSpacing) {
+            return [];
+        }
+        spacing = Math.max(minSpacing, spacing);
+    }
 
     // Get bounding box of region
     let minX = Infinity, maxX = -Infinity;

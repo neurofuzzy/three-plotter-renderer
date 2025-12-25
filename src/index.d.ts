@@ -10,6 +10,13 @@ export interface SilhouetteOptions {
     minArea?: number;
 }
 
+export interface BrightnessShading {
+    enabled?: boolean;
+    invert?: boolean;
+    lightDirection?: Vector3 | null;
+    intensity?: number;
+}
+
 export interface HatchOptions {
     baseSpacing?: number;
     minSpacing?: number;
@@ -23,6 +30,7 @@ export interface HatchOptions {
         y?: { rotation?: number; spacing?: number };
         z?: { rotation?: number; spacing?: number };
     };
+    brightnessShading?: BrightnessShading;
 }
 
 export interface EdgeOptions {
@@ -34,12 +42,28 @@ export interface HiddenLineOptions {
     smoothThreshold?: number;
 }
 
+export interface Theme {
+    background: string;
+    edgeStroke: string;
+    hatchStroke: string;
+    silhouetteFill?: (normal: Vector3) => string;
+}
+
+export interface Themes {
+    light: Theme;
+    dark: Theme;
+    [key: string]: Theme;
+}
+
 export class PlotterRenderer {
     domElement: SVGElement;
 
     showSilhouettes: boolean;
     showEdges: boolean;
     showHatches: boolean;
+
+    theme: 'light' | 'dark' | string;
+    themes: Themes;
 
     silhouetteOptions: SilhouetteOptions;
     hatchOptions: HatchOptions;
@@ -167,6 +191,8 @@ export interface PerspectiveHatchOptions {
         y?: { rotation?: number; spacing?: number };
         z?: { rotation?: number; spacing?: number };
     };
+    brightness?: number | null;
+    invertBrightness?: boolean;
 }
 
 export function generatePerspectiveHatches(

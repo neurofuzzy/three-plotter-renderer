@@ -124,6 +124,25 @@ function renderNormals(renderer, scene, camera, width, height) {
     const hiddenObjects = [];
 
     scene.traverse(obj => {
+        // Skip objects marked for SVG exclusion (including checking parent hierarchy)
+        let shouldExclude = false;
+        let parent = obj;
+        while (parent) {
+            if (parent.userData && parent.userData.excludeFromSVG) {
+                shouldExclude = true;
+                break;
+            }
+            parent = parent.parent;
+        }
+
+        if (shouldExclude) {
+            if (obj.visible) {
+                hiddenObjects.push(obj);
+                obj.visible = false;
+            }
+            return;
+        }
+
         // Only render Mesh objects, hide helpers/lines
         if (obj.isMesh) {
             originalMaterials.set(obj, obj.material);
@@ -137,8 +156,15 @@ function renderNormals(renderer, scene, camera, width, height) {
         }
     });
 
+    // Save and clear scene background to avoid it being rendered to the target
+    const originalBackground = scene.background;
+    scene.background = null;
+
     renderer.setRenderTarget(target);
     renderer.render(scene, camera);
+
+    // Restore scene background
+    scene.background = originalBackground;
 
     scene.traverse(obj => {
         if (obj.isMesh && originalMaterials.has(obj)) {
@@ -177,6 +203,25 @@ function renderDepth(renderer, scene, camera, width, height) {
     const hiddenObjects = [];
 
     scene.traverse(obj => {
+        // Skip objects marked for SVG exclusion (including checking parent hierarchy)
+        let shouldExclude = false;
+        let parent = obj;
+        while (parent) {
+            if (parent.userData && parent.userData.excludeFromSVG) {
+                shouldExclude = true;
+                break;
+            }
+            parent = parent.parent;
+        }
+
+        if (shouldExclude) {
+            if (obj.visible) {
+                hiddenObjects.push(obj);
+                obj.visible = false;
+            }
+            return;
+        }
+
         if (obj.isMesh) {
             originalMaterials.set(obj, obj.material);
             obj.material = depthMaterial;
@@ -188,8 +233,15 @@ function renderDepth(renderer, scene, camera, width, height) {
         }
     });
 
+    // Save and clear scene background to avoid it being rendered to the target
+    const originalBackground = scene.background;
+    scene.background = null;
+
     renderer.setRenderTarget(target);
     renderer.render(scene, camera);
+
+    // Restore scene background
+    scene.background = originalBackground;
 
     scene.traverse(obj => {
         if (obj.isMesh && originalMaterials.has(obj)) {
