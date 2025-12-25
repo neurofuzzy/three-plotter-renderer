@@ -299,8 +299,15 @@
                     </div>
                 </div>
                 <div class="control-row">
+                    <span class="control-label">Inset</span>
+                    <div class="input-group">
+                        <input type="number" id="insetPixels" value="2" step="1" min="0" title="Inset from edges (px)">
+                    </div>
+                </div>
+                <div class="control-row">
                     <label><input type="checkbox" id="connectHatches"> Connect Lines</label>
                 </div>
+
             </div>
 
             <!-- Lighting Section -->
@@ -322,6 +329,8 @@
                         </div>
                     </div>
                 </div>
+
+
                 <div class="control-row">
                     <span class="control-label">Position</span>
                     <div class="input-group">
@@ -593,17 +602,30 @@
                 intensity: parseFloat(document.getElementById('lightIntensity').value) || 50
             };
 
-            // Configure min/max spacing and connect hatches
+            // Configure min/max spacing, inset, and connect hatches
             plotterRenderer.hatchOptions.minSpacing = parseFloat(document.getElementById('minSpacing').value) || 3;
             plotterRenderer.hatchOptions.maxSpacing = parseFloat(document.getElementById('maxSpacing').value) || 40;
+            const insetVal = parseFloat(document.getElementById('insetPixels').value);
+            plotterRenderer.hatchOptions.insetPixels = isNaN(insetVal) ? 2 : insetVal;
             plotterRenderer.hatchOptions.connectHatches = document.getElementById('connectHatches').checked;
 
-            setTimeout(() => {
-                const startTime = performance.now();
 
-                // Clear and render using PlotterRenderer
+            setTimeout(async () => {
+                const startTime = performance.now();
+                document.getElementById('stats').textContent = 'Rendering...';
+
+                // Set up progress callback
+                plotterRenderer.hatchOptions.progressCallback = (progress) => {
+                    document.getElementById('stats').textContent =
+                        `Rendering... ${Math.round(progress * 100)}%`;
+                };
+
+                // Clear and render using PlotterRenderer (async)
                 plotterRenderer.clear();
-                plotterRenderer.renderGPULayers(scene, camera);
+                await plotterRenderer.renderGPULayers(scene, camera);
+
+                // Clear progress callback
+                plotterRenderer.hatchOptions.progressCallback = null;
 
                 // Replace the SVG overlay with PlotterRenderer's output
                 const svgOverlay = document.getElementById('svg-overlay');
@@ -616,6 +638,7 @@
                 const elapsed = performance.now() - startTime;
                 document.getElementById('stats').textContent = `Render completed in ${elapsed.toFixed(0)}ms`;
             }, 50);
+
         }
 
         function animate() {
