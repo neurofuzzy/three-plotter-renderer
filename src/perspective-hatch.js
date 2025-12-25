@@ -105,8 +105,11 @@ export function generatePerspectiveHatches(region, camera, options = {}) {
         invertBrightness = false  // True for white-on-black (bright = dense)
     } = options;
 
-    const { boundary, normal, depth = 0.5 } = region;
-    if (boundary.length < 3) return [];
+    const { boundary, hatchBoundary, normal, depth = 0.5 } = region;
+    // Use hatchBoundary for clipping if available (inset boundary), otherwise use boundary
+    const clipBoundary = hatchBoundary || boundary;
+    if (clipBoundary.length < 3) return [];
+
 
     // Normal is in VIEW SPACE (from MeshNormalMaterial)
     // Transform to WORLD SPACE using camera quaternion
@@ -202,10 +205,10 @@ export function generatePerspectiveHatches(region, camera, options = {}) {
         spacing = Math.max(minSpacing, spacing);
     }
 
-    // Get bounding box of region
+    // Get bounding box of region (use clipBoundary for hatch generation)
     let minX = Infinity, maxX = -Infinity;
     let minY = Infinity, maxY = -Infinity;
-    for (const pt of boundary) {
+    for (const pt of clipBoundary) {
         minX = Math.min(minX, pt.x);
         maxX = Math.max(maxX, pt.x);
         minY = Math.min(minY, pt.y);
@@ -253,7 +256,7 @@ export function generatePerspectiveHatches(region, camera, options = {}) {
             const lineStart = vanishingPoint.clone();
             const lineEnd = vanishingPoint.clone().add(dir.clone().multiplyScalar(vpDist * 10));
 
-            const clipped = clipLineToPolygon({ start: lineStart, end: lineEnd }, boundary);
+            const clipped = clipLineToPolygon({ start: lineStart, end: lineEnd }, clipBoundary);
             hatches.push(...clipped);
         }
     } else {
@@ -269,7 +272,7 @@ export function generatePerspectiveHatches(region, camera, options = {}) {
             const lineStart = lineCenter.clone().add(finalDirection.clone().multiplyScalar(-diag));
             const lineEnd = lineCenter.clone().add(finalDirection.clone().multiplyScalar(diag));
 
-            const clipped = clipLineToPolygon({ start: lineStart, end: lineEnd }, boundary);
+            const clipped = clipLineToPolygon({ start: lineStart, end: lineEnd }, clipBoundary);
             hatches.push(...clipped);
         }
     }

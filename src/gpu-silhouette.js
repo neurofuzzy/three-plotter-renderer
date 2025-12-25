@@ -63,20 +63,13 @@ export function extractNormalRegions(renderer, scene, camera, options = {}) {
     // Step 2: Quantize normals to region IDs
     const { regionMap, normalLookup } = quantizeNormals(normalPixels, width, height, normalBuckets);
 
-    // Step 3: Connected component labeling on ORIGINAL (non-eroded) regions
-    // This gives us the true silhouette boundaries
+    // Step 3: Connected component labeling
     const { labels, regionCount, labelToNormalId } = connectedComponents(regionMap, width, height);
 
-    // Step 3.5: Apply erosion to labels for insetting (preserves region IDs)
-    let erodedLabels = labels;
-    if (insetAmount > 0) {
-        erodedLabels = erodeLabels(labels, width, height, insetAmount);
-    }
-
-
-    // Step 4: Trace boundaries for each region (using ORIGINAL labels, not eroded)
+    // Step 4: Trace boundaries for each region
     const regions = [];
     for (let regionId = 1; regionId <= regionCount; regionId++) {
+
         const boundary = traceBoundary(labels, width, height, regionId);
         if (boundary.length < 3) continue;
 
@@ -93,30 +86,28 @@ export function extractNormalRegions(renderer, scene, camera, options = {}) {
         // Sample depth at region center
         const depth = sampleRegionDepth(labels, depthPixels, width, height, regionId);
 
-        // Trace eroded boundary for hatch clipping (if different from original)
-        let hatchBoundary = simplified;
-        if (insetAmount > 0) {
-            const erodedBoundary = traceBoundary(erodedLabels, width, height, regionId);
-            if (erodedBoundary.length >= 3) {
-                hatchBoundary = rdpSimplify(erodedBoundary, simplifyTolerance);
-            }
-        }
+        // Create inset boundary for hatch clipping (mathematical inset, not pixel erosion)
+        const scaledInset = insetAmount / resolution;  // Convert back to screen coords
+
+        // First convert to screen coords for inset calculation
+        const screenBoundary = simplified.map(p => ({
+            x: (p.x / resolution) - size.x / 2,
+            y: (p.y / resolution) - size.y / 2
+        }));
+
+        // Apply mathematical inset
+        const insetBoundaryScreen = insetPolygon(screenBoundary, scaledInset);
 
         regions.push({
-            boundary: simplified.map(p => new Vector2(
-                (p.x / resolution) - size.x / 2,
-                (p.y / resolution) - size.y / 2  // Y already flipped during readback
-            )),
-            hatchBoundary: hatchBoundary.map(p => new Vector2(
-                (p.x / resolution) - size.x / 2,
-                (p.y / resolution) - size.y / 2
-            )),
+            boundary: screenBoundary.map(p => new Vector2(p.x, p.y)),
+            hatchBoundary: insetBoundaryScreen.map(p => new Vector2(p.x, p.y)),
             normal,
             depth,  // 0-1 normalized depth
             area: area / (resolution * resolution),
             regionId
         });
     }
+
 
     // Step 5: Detect holes (regions entirely inside another region)
     detectHoles(regions);
@@ -347,43 +338,7 @@ function erodeRegionMap(regionMap, width, height, iterations) {
 }
 
 /**
- * Morphological erosion on labels array (preserves region IDs)
- * Erodes pixels at boundaries (next to background 0 or different labels)
- */
-function erodeLabels(labels, width, height, iterations) {
-    let current = new Uint32Array(labels);
 
-    for (let iter = 0; iter < iterations; iter++) {
-        const next = new Uint32Array(current);
-
-        for (let y = 1; y < height - 1; y++) {
-            for (let x = 1; x < width - 1; x++) {
-                const i = y * width + x;
-                const label = current[i];
-
-                if (label === 0) continue;
-
-                // Check 4-connected neighbors
-                // Erode if ANY neighbor is background (0) or different label
-                const left = current[i - 1];
-                const right = current[i + 1];
-                const up = current[i - width];
-                const down = current[i + width];
-
-                if (left === 0 || right === 0 || up === 0 || down === 0) {
-                    next[i] = 0;  // Erode this pixel (it touches background)
-                }
-                // Keep the pixel even if it touches different regions
-            }
-        }
-
-        current = next;
-    }
-
-    return current;
-}
-
-/**
  * Quantize normals into buckets and create region map
  * Returns regionMap (pixel -> regionId) and normalLookup (regionId -> Vector3)
  */
@@ -651,6 +606,65 @@ function polygonArea(points) {
 }
 
 /**
+ * Inset a polygon by a fixed distance (shrink inward)
+ * Uses simple vertex offset along bisector of adjacent edges
+ * @param {Array<{x: number, y: number}>} polygon
+ * @param {number} amount - Inset amount in same units as polygon
+ * @returns {Array<{x: number, y: number}>}
+ */
+function insetPolygon(polygon, amount) {
+    if (polygon.length < 3 || amount <= 0) return polygon;
+
+    const n = polygon.length;
+    const result = [];
+
+    // Determine winding direction (positive area = CCW)
+    const area = polygonArea(polygon);
+    const sign = area > 0 ? 1 : -1;
+
+    for (let i = 0; i < n; i++) {
+        const prev = polygon[(i - 1 + n) % n];
+        const curr = polygon[i];
+        const next = polygon[(i + 1) % n];
+
+        // Compute edge vectors
+        const dx1 = curr.x - prev.x;
+        const dy1 = curr.y - prev.y;
+        const dx2 = next.x - curr.x;
+        const dy2 = next.y - curr.y;
+
+        // Normalize
+        const len1 = Math.sqrt(dx1 * dx1 + dy1 * dy1) || 1;
+        const len2 = Math.sqrt(dx2 * dx2 + dy2 * dy2) || 1;
+        const nx1 = dx1 / len1, ny1 = dy1 / len1;
+        const nx2 = dx2 / len2, ny2 = dy2 / len2;
+
+        // Inward normals (perpendicular, pointing inward based on winding)
+        const inx1 = -ny1 * sign, iny1 = nx1 * sign;
+        const inx2 = -ny2 * sign, iny2 = nx2 * sign;
+
+        // Average the two inward normals (bisector direction)
+        let bx = inx1 + inx2;
+        let by = iny1 + iny2;
+        const blen = Math.sqrt(bx * bx + by * by) || 1;
+        bx /= blen;
+        by /= blen;
+
+        // Scale by amount (adjust for angle at corner)
+        const dot = inx1 * inx2 + iny1 * iny2;
+        const scale = amount / Math.sqrt((1 + dot) / 2 + 0.001); // Miter factor
+
+        result.push({
+            x: curr.x + bx * Math.min(scale, amount * 3), // Cap miter
+            y: curr.y + by * Math.min(scale, amount * 3)
+        });
+    }
+
+    return result;
+}
+
+
+/**
  * Get axis-aligned bounding box for a polygon
  * @param {Array<{x: number, y: number}>} boundary
  * @returns {{minX: number, maxX: number, minY: number, maxY: number}}
@@ -723,15 +737,12 @@ function detectHoles(regions) {
             if (allInside) {
                 region.isHole = true;
                 region.parentRegionId = other.regionId;
-                console.log(`[Holes] Region ${region.regionId} detected as hole inside region ${other.regionId}`);
                 break;
             }
         }
     }
-
-    const holes = regions.filter(r => r.isHole);
-    console.log(`[Holes] Detected ${holes.length} holes out of ${regions.length} regions`);
 }
+
 
 
 
