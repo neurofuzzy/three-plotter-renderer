@@ -99,24 +99,54 @@ export function generatePerspectiveHatches(region, camera, options = {}) {
         maxSpacing = 20,      // Maximum spacing
         depthFactor = 0.5,    // How much depth affects density
         screenWidth = 1200,
-        screenHeight = 800
+        screenHeight = 800,
+        axisSettings = {}     // { x: { rotation: 0, spacing: 10 }, y: ... }
     } = options;
 
     const { boundary, normal, depth = 0.5 } = region;
     if (boundary.length < 3) return [];
+
+    // Determine dominant axis
+    const ax = Math.abs(normal.x);
+    const ay = Math.abs(normal.y);
+    const az = Math.abs(normal.z);
+
+    let axis = 'y'; // default up
+    if (ax >= ay && ax >= az) axis = 'x';
+    else if (az >= ay && az >= ax) axis = 'z';
+
+    // Get settings for this axis
+    const settings = axisSettings[axis] || {};
+    const rotationDeg = settings.rotation || 0;
+    const spacingOverride = settings.spacing;
+
+    console.log(`[Hatch] normal=(${normal.x.toFixed(2)}, ${normal.y.toFixed(2)}, ${normal.z.toFixed(2)}) => axis=${axis}, rotation=${rotationDeg}, spacing=${spacingOverride}`);
 
     // Get hatch direction from normal
     const { direction, vanishingPoint } = computeHatchDirection(
         normal, camera, screenWidth, screenHeight
     );
 
+    // Apply rotation if needed
+    let finalDirection = direction;
+    if (rotationDeg !== 0) {
+        const rad = rotationDeg * (Math.PI / 180);
+        const cos = Math.cos(rad);
+        const sin = Math.sin(rad);
+        finalDirection = new Vector2(
+            direction.x * cos - direction.y * sin,
+            direction.x * sin + direction.y * cos
+        );
+    }
+
     // Perpendicular direction for spacing
-    const perpDir = new Vector2(-direction.y, direction.x);
+    const perpDir = new Vector2(-finalDirection.y, finalDirection.x);
 
     // Calculate spacing based on depth (closer = denser)
-    // Depth is 0-1, with lower values being closer
+    // Use override if available, otherwise baseSpacing
+    const effectiveBase = spacingOverride !== undefined ? spacingOverride : baseSpacing;
     const spacing = Math.max(minSpacing, Math.min(maxSpacing,
-        baseSpacing + (depth * depthFactor * (maxSpacing - baseSpacing))
+        effectiveBase + (depth * depthFactor * (maxSpacing - minSpacing))
     ));
 
     // Get bounding box of region
@@ -138,7 +168,16 @@ export function generatePerspectiveHatches(region, camera, options = {}) {
 
     const hatches = [];
 
-    if (vanishingPoint && vanishingPoint.distanceTo(center) < diag * 5) {
+    // If rotated, we can't easily use the VP logic unless we rotate the VP too, 
+    // but typically architectural hatching with rotation implies a pattern override, 
+    // so we'll often fall back to parallel for rotated patterns unless it's 0/90.
+    // For now, if rotation is significant, force parallel to avoid weird VP artifacts.
+    // OR: Rotate the vector from VP to center? 
+    // Let's stick to parallel for significantly rotated hatches to keep it clean for now,
+    // as "perspective rotated hatching" is geometrically ambiguous.
+    const usePerspective = vanishingPoint && Math.abs(rotationDeg) < 5 && vanishingPoint.distanceTo(center) < diag * 5;
+
+    if (usePerspective) {
         // Perspective lines converging to visible VP
         const vpDist = vanishingPoint.distanceTo(center);
 
@@ -174,8 +213,8 @@ export function generatePerspectiveHatches(region, camera, options = {}) {
             const lineCenter = center.clone().add(offset);
 
             // Line extending in hatch direction
-            const lineStart = lineCenter.clone().add(direction.clone().multiplyScalar(-diag));
-            const lineEnd = lineCenter.clone().add(direction.clone().multiplyScalar(diag));
+            const lineStart = lineCenter.clone().add(finalDirection.clone().multiplyScalar(-diag));
+            const lineEnd = lineCenter.clone().add(finalDirection.clone().multiplyScalar(diag));
 
             const clipped = clipLineToPolygon({ start: lineStart, end: lineEnd }, boundary);
             hatches.push(...clipped);

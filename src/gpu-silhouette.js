@@ -14,6 +14,7 @@ import {
     WebGLRenderTarget,
     MeshNormalMaterial,
     MeshDepthMaterial,
+    ShaderMaterial,
     RGBADepthPacking,
     NearestFilter,
     Vector2,
@@ -115,6 +116,8 @@ function renderNormals(renderer, scene, camera, width, height) {
         magFilter: NearestFilter
     });
 
+    // Use MeshNormalMaterial for normal extraction
+    // Note: This outputs VIEW SPACE normals, not world space
     const normalMaterial = new MeshNormalMaterial({ flatShading: true });
 
     const originalMaterials = new Map();

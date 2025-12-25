@@ -3,29 +3,99 @@
 
 <head>
     <meta charset="utf-8">
-    <title>Simple Primitives Hidden Line Test</title>
+    <title>Primitives Hatching Test</title>
     <style>
-        body {
+        * {
             margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg-dark: #1a1a2e;
+            --bg-glass: rgba(22, 33, 62, 0.85);
+            --accent: #0f3460;
+            --accent-hover: #e94560;
+            --text: #eaeaea;
+            --text-muted: #a0a0a0;
+            --border: rgba(255, 255, 255, 0.1);
+        }
+
+        body {
             overflow: hidden;
-            font-family: sans-serif;
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background: var(--bg-dark);
+            color: var(--text);
         }
 
         #info {
             position: absolute;
-            top: 10px;
-            left: 10px;
-            color: white;
-            background: rgba(0, 0, 0, 0.7);
-            padding: 10px;
+            top: 16px;
+            left: 16px;
+            background: var(--bg-glass);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 16px 20px;
             z-index: 100;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            max-width: 90vw;
         }
 
-        #info button {
-            padding: 8px 16px;
+        #info .controls {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        #info button,
+        #info select {
+            padding: 10px 18px;
             font-size: 14px;
             cursor: pointer;
-            margin-right: 10px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            background: var(--accent);
+            color: var(--text);
+            transition: all 0.2s ease;
+            font-family: inherit;
+        }
+
+        #info button:hover,
+        #info select:hover {
+            background: var(--accent-hover);
+            border-color: var(--accent-hover);
+        }
+
+        .control-group {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            margin-left: 10px;
+            border-left: 1px solid var(--border);
+            padding-left: 10px;
+        }
+
+        .input-label {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+        }
+
+        input[type="number"] {
+            width: 50px;
+            padding: 6px;
+            border-radius: 4px;
+            border: 1px solid var(--border);
+            background: rgba(0, 0, 0, 0.2);
+            color: var(--text);
+        }
+
+        #stats {
+            margin-top: 12px;
+            font-size: 13px;
+            color: var(--text-muted);
         }
 
         canvas {
@@ -43,31 +113,58 @@
 
 <body>
     <div id="info">
-        <div>
-            <button id="renderBtn">Render Hidden Lines</button>
-            <button id="wasmBtn">WASM Full Pipeline</button>
+        <div class="controls">
+            <span style="font-weight: 500; margin-right: 8px;">Primitives</span>
+
+            <div class="control-group">
+                <span class="input-label" title="Hatch Rotation (Deg)">Rotation:</span>
+                <input type="number" id="rotX" value="0" title="X Axis Rotation">
+                <input type="number" id="rotY" value="0" title="Y Axis Rotation">
+                <input type="number" id="rotZ" value="0" title="Z Axis Rotation">
+            </div>
+
+            <div class="control-group">
+                <span class="input-label" title="Spacing (screen px)">Spacing:</span>
+                <input type="number" id="spaceX" value="8" step="1" title="X Axis Spacing">
+                <input type="number" id="spaceY" value="8" step="1" title="Y Axis Spacing">
+                <input type="number" id="spaceZ" value="8" step="1" title="Z Axis Spacing">
+            </div>
+
+            <div class="control-group">
+                <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
+                    <input type="checkbox" id="showSilhouettes" checked> Silhouettes
+                </label>
+                <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
+                    <input type="checkbox" id="showEdges" checked> Edges
+                </label>
+                <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
+                    <input type="checkbox" id="showHatches" checked> Hatches
+                </label>
+            </div>
+
+            <button id="renderBtn" style="background: #2d8a5a; font-weight: bold; margin-left: 10px;">Render</button>
             <button id="exportBtn">Export SVG</button>
-            <button id="gpuRegionsBtn" style="background: #5a2d5a; color: white;">GPU Regions</button>
-            <button id="debugRegionsBtn" style="background: #5a5a2d; color: white;">Debug Regions</button>
         </div>
-        <div id="stats">Simple primitives: Pyramid, Cylinder, Icosahedron</div>
+        <div id="stats">Use mouse to orbit. Click Render to generate hidden lines.</div>
     </div>
+
     <svg id="svg-overlay" xmlns="http://www.w3.org/2000/svg"></svg>
+
     <script type="module">
         import * as THREE from 'three';
         import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-        import { computeHiddenLines, computeHiddenLinesMultiple } from '../src/hidden-line.js';
-        import { createHiddenLineProcessor } from '../src/wasm-geometry.js';
-        import { extractNormalRegions, debugNormalRegions } from '../src/gpu-silhouette.js';
+        import { computeHiddenLinesMultiple } from '../src/hidden-line.js';
+        import { extractNormalRegions } from '../src/gpu-silhouette.js';
+        import { generatePerspectiveHatches, clipLineOutsidePolygon } from '../src/perspective-hatch.js';
 
         let scene, camera, renderer, controls;
-        let pyramid, cylinder, sphere;
+        let primitives = [];
 
         function init() {
             scene = new THREE.Scene();
             scene.background = new THREE.Color(0x222222);
 
-            camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 1, 1000);
             camera.position.set(8, 6, 10);
 
             renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -84,35 +181,38 @@
             scene.add(light);
             scene.add(new THREE.AmbientLight(0x404040));
 
-            // Materials - NOT transparent so depth writes properly, FLAT shading
+            // Materials - Flat shading for proper detection
             const material = new THREE.MeshPhongMaterial({
                 color: 0x44aa88,
-                transparent: false,
-                flatShading: true
+                flatShading: true,
+                shininess: 0
             });
 
-            // Pyramid (cone with 4 sides)
+            // 1. Pyramid (X-axis/Z-axis faces mainly)
             const pyramidGeom = new THREE.ConeGeometry(1.5, 2.5, 4);
-            pyramid = new THREE.Mesh(pyramidGeom, material.clone());
+            const pyramid = new THREE.Mesh(pyramidGeom, material.clone());
             pyramid.material.color.set(0xff6644);
             pyramid.position.set(-4, 1.25, 0);
             scene.add(pyramid);
+            primitives.push(pyramid);
 
-            // 12-sided cylinder
+            // 2. Cylinder (Sides are radial, Top is Y-axis)
             const cylinderGeom = new THREE.CylinderGeometry(1, 1, 2.5, 12);
-            cylinder = new THREE.Mesh(cylinderGeom, material.clone());
+            const cylinder = new THREE.Mesh(cylinderGeom, material.clone());
             cylinder.material.color.set(0x44ff66);
             cylinder.position.set(0, 1.25, 0);
             scene.add(cylinder);
+            primitives.push(cylinder);
 
-            // Icosahedron (close to geosphere)
+            // 3. Icosahedron (Multi-faceted)
             const icoGeom = new THREE.IcosahedronGeometry(1.5, 0);
-            sphere = new THREE.Mesh(icoGeom, material.clone());
+            const sphere = new THREE.Mesh(icoGeom, material.clone());
             sphere.material.color.set(0x4466ff);
             sphere.position.set(4, 1.5, 0);
             scene.add(sphere);
+            primitives.push(sphere);
 
-            // Floor grid for reference
+            // Floor grid
             const gridHelper = new THREE.GridHelper(20, 20, 0x444444, 0x333333);
             scene.add(gridHelper);
 
@@ -121,19 +221,10 @@
             svg.setAttribute('width', window.innerWidth);
             svg.setAttribute('height', window.innerHeight);
 
-            // Log geometry stats
-            const totalTris = (pyramidGeom.index ? pyramidGeom.index.count / 3 : pyramidGeom.attributes.position.count / 3)
-                + (cylinderGeom.index ? cylinderGeom.index.count / 3 : cylinderGeom.attributes.position.count / 3)
-                + (icoGeom.index ? icoGeom.index.count / 3 : icoGeom.attributes.position.count / 3);
-            document.getElementById('stats').textContent = `Total triangles: ~${Math.round(totalTris)}. Click "Render Hidden Lines" when ready.`;
-
             // Event listeners
             window.addEventListener('resize', onResize);
-            document.getElementById('renderBtn').addEventListener('click', computeAndDraw);
-            document.getElementById('wasmBtn').addEventListener('click', computeWASM);
+            document.getElementById('renderBtn').addEventListener('click', render);
             document.getElementById('exportBtn').addEventListener('click', exportSVG);
-            document.getElementById('gpuRegionsBtn').addEventListener('click', testGpuRegions);
-            document.getElementById('debugRegionsBtn').addEventListener('click', () => debugNormalRegions(renderer, scene, camera));
 
             animate();
         }
@@ -148,228 +239,6 @@
             svg.setAttribute('height', window.innerHeight);
         }
 
-        import { Slicer } from '../src/slicer.js';
-
-        // ... existing imports ...
-
-        // ... existing code ...
-
-        function computeAndDraw() {
-            document.getElementById('stats').textContent = 'Computing hidden lines...';
-
-            // Clear SVG
-            const svg = document.getElementById('svg-overlay');
-            svg.innerHTML = '';
-
-            setTimeout(() => {
-                const startTime = performance.now();
-
-                // Process all meshes together for cross-object occlusion
-                const meshes = [pyramid, cylinder, sphere];
-                for (const mesh of meshes) {
-                    mesh.updateMatrixWorld(true);
-                }
-
-                // Generate hatch lines
-                const hatchEdges = [];
-                // Pyramid: vertical slices (normal X)
-                console.time('hatch pyramid');
-                hatchEdges.push(...Slicer.computeSlices(pyramid, {
-                    spacing: 0.1,
-                    normal: new THREE.Vector3(0, 1, 0) // Horizontal slices (Y normal)
-                }));
-                console.timeEnd('hatch pyramid');
-
-                // Cylinder: angled slices
-                console.time('hatch cylinder');
-                hatchEdges.push(...Slicer.computeSlices(cylinder, {
-                    spacing: 0.1,
-                    offset: 0.0001, // Offset to avoid alignment artifacts
-                    normal: new THREE.Vector3(1, 1, 0).normalize()
-                }));
-                console.timeEnd('hatch cylinder');
-
-                // Sphere: Z slices
-                console.time('hatch sphere');
-                hatchEdges.push(...Slicer.computeSlices(sphere, {
-                    spacing: 0.1,
-                    offset: 0.001, // Offset to avoid potential exact-zero edge cases
-                    normal: new THREE.Vector3(0, 0, 1) // Vertical slices (Z normal)
-                }));
-                console.timeEnd('hatch sphere');
-
-                const result = computeHiddenLinesMultiple(meshes, camera, scene, {
-                    smoothThreshold: 0.99,
-                    gridSize: 32,
-                    skipOcclusion: false,  // Enable occlusion testing
-                    width: window.innerWidth,
-                    height: window.innerHeight,
-                    renderer: renderer,
-                    hatchEdges: hatchEdges,
-                    minHatchDotProduct: 0.15 // Filter grazing angle hatches
-                });
-
-                const elapsed = performance.now() - startTime;
-                document.getElementById('stats').textContent =
-                    `Rendered ${result.edges.length} edges in ${elapsed.toFixed(0)}ms`;
-
-                drawToSVG(result.edges, result.allEdges);
-            }, 50);
-        }
-
-        // WASM Full Pipeline test
-        function computeWASM() {
-            document.getElementById('stats').textContent = 'Computing via WASM full pipeline...';
-            const svg = document.getElementById('svg-overlay');
-            svg.innerHTML = '';
-
-            setTimeout(() => {
-                const startTime = performance.now();
-
-                const processor = createHiddenLineProcessor();
-                if (!processor) {
-                    document.getElementById('stats').textContent = 'WASM not available!';
-                    return;
-                }
-
-                const meshes = [pyramid, cylinder, sphere];
-
-                // Debug cylinder geometry
-                const geom = cylinder.geometry;
-                const idx = geom.index;
-                const pos = geom.attributes.position;
-                console.log('=== Cylinder Debug ===');
-                console.log('Vertices:', pos.count, 'Indices:', idx.count, 'Triangles:', idx.count / 3);
-
-                // Check for duplicate positions
-                const posMap = new Map();
-                for (let i = 0; i < pos.count; i++) {
-                    const key = `${pos.getX(i).toFixed(3)},${pos.getY(i).toFixed(3)},${pos.getZ(i).toFixed(3)}`;
-                    if (!posMap.has(key)) posMap.set(key, []);
-                    posMap.get(key).push(i);
-                }
-                let dupes = 0;
-                posMap.forEach(v => { if (v.length > 1) dupes++; });
-                console.log('Positions with duplicate vertex indices:', dupes);
-
-                processor.setMeshes(meshes);
-                processor.setCamera(camera, window.innerWidth, window.innerHeight);
-                processor.setHatchConfig([0, 1, 0], 0.15); // Horizontal slices with 0.15 spacing
-
-                const edges = processor.compute();
-
-                const elapsed = performance.now() - startTime;
-                document.getElementById('stats').textContent =
-                    `WASM: ${edges.length} edges in ${elapsed.toFixed(0)}ms`;
-
-                drawWASMEdges(edges);
-            }, 50);
-        }
-
-        function drawWASMEdges(edges) {
-            const svg = document.getElementById('svg-overlay');
-            svg.innerHTML = '';
-
-            const halfWidth = window.innerWidth / 2;
-            const halfHeight = window.innerHeight / 2;
-
-            let silhouetteD = '';
-            let creaseD = '';
-            let hatchD = '';
-
-            for (const edge of edges) {
-                const x1 = edge.x1 + halfWidth;
-                const y1 = halfHeight + edge.y1;
-                const x2 = edge.x2 + halfWidth;
-                const y2 = halfHeight + edge.y2;
-
-                if (edge.type === 'silhouette') {
-                    silhouetteD += `M${x1},${y1}L${x2},${y2}`;
-                } else if (edge.type === 'hatch') {
-                    hatchD += `M${x1},${y1}L${x2},${y2}`;
-                } else {
-                    creaseD += `M${x1},${y1}L${x2},${y2}`;
-                }
-            }
-
-            // Draw hatch lines first (behind edges)
-            if (hatchD) {
-                const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-                path.setAttribute('d', hatchD);
-                path.setAttribute('stroke', '#aaaaaa');
-                path.setAttribute('stroke-width', '0.5');
-                path.setAttribute('fill', 'none');
-                svg.appendChild(path);
-            }
-
-            if (silhouetteD) {
-                const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-                path.setAttribute('d', silhouetteD);
-                path.setAttribute('stroke', '#000000');
-                path.setAttribute('stroke-width', '2');
-                path.setAttribute('fill', 'none');
-                svg.appendChild(path);
-            }
-
-            if (creaseD) {
-                const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-                path.setAttribute('d', creaseD);
-                path.setAttribute('stroke', '#666666');
-                path.setAttribute('stroke-width', '1');
-                path.setAttribute('fill', 'none');
-                svg.appendChild(path);
-            }
-        }
-
-        // ... existing code ...
-
-        function drawToSVG(edges, allEdges) {
-            const svg = document.getElementById('svg-overlay');
-            svg.innerHTML = '';
-
-            const halfWidth = window.innerWidth / 2;
-            const halfHeight = window.innerHeight / 2;
-
-
-            // NORMAL MODE: Separate hatch and normal edges
-            let pathD = '';
-            let hatchPathD = '';
-
-            for (const edge of edges) {
-                const x1 = edge.a.x + halfWidth;
-                const y1 = halfHeight + edge.a.y;
-                const x2 = edge.b.x + halfWidth;
-                const y2 = halfHeight + edge.b.y;
-
-                if (edge.isHatch) {
-                    hatchPathD += `M${x1},${y1}L${x2},${y2}`;
-                } else {
-                    pathD += `M${x1},${y1}L${x2},${y2}`;
-                }
-            }
-
-            // Draw model edges
-            if (pathD) {
-                const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-                path.setAttribute('d', pathD);
-                path.setAttribute('stroke', '#000000');
-                path.setAttribute('stroke-width', '1.5');
-                path.setAttribute('fill', 'none');
-                svg.appendChild(path);
-            }
-
-            // Draw hatch edges (Red/Blue?)
-            if (hatchPathD) {
-                const hatchPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-                hatchPath.setAttribute('d', hatchPathD);
-                hatchPath.setAttribute('stroke', '#ff0000'); // Red for hatch
-                hatchPath.setAttribute('stroke-width', '0.5'); // Thinner
-                hatchPath.setAttribute('fill', 'none');
-                svg.appendChild(hatchPath);
-            }
-
-        }
-
         function exportSVG() {
             const svg = document.getElementById('svg-overlay');
             const svgContent = svg.outerHTML;
@@ -382,54 +251,148 @@
             URL.revokeObjectURL(url);
         }
 
-        function testGpuRegions() {
-            document.getElementById('stats').textContent = 'Extracting GPU normal regions...';
+        function render() {
+            const showSilhouettes = document.getElementById('showSilhouettes').checked;
+            const showEdges = document.getElementById('showEdges').checked;
+            const showHatches = document.getElementById('showHatches').checked;
 
-            console.time('GPU Normal Regions');
-            const regions = extractNormalRegions(renderer, scene, camera, {
-                normalBuckets: 12,
-                simplifyTolerance: 2.0,
-                minArea: 100
-            });
-            console.timeEnd('GPU Normal Regions');
+            // Get settings
+            const axisSettings = {
+                x: {
+                    rotation: parseFloat(document.getElementById('rotX').value),
+                    spacing: parseFloat(document.getElementById('spaceX').value)
+                },
+                y: {
+                    rotation: parseFloat(document.getElementById('rotY').value),
+                    spacing: parseFloat(document.getElementById('spaceY').value)
+                },
+                z: {
+                    rotation: parseFloat(document.getElementById('rotZ').value),
+                    spacing: parseFloat(document.getElementById('spaceZ').value)
+                }
+            };
 
-            console.log(`Extracted ${regions.length} normal regions`);
+            document.getElementById('stats').textContent = 'Rendering...';
 
-            // Visualize regions on SVG
             const svg = document.getElementById('svg-overlay');
             svg.innerHTML = '';
-            svg.setAttribute('width', window.innerWidth);
-            svg.setAttribute('height', window.innerHeight);
 
             const w2 = window.innerWidth / 2;
             const h2 = window.innerHeight / 2;
 
-            regions.forEach((region, idx) => {
-                if (region.boundary.length < 3) return;
+            // setTimeout to allow UI update
+            setTimeout(() => {
+                const startTime = performance.now();
 
-                const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                // 1. Compute Hidden Lines (Edges & Silhouettes)
+                if (showSilhouettes || showEdges) {
+                    // Update matrices
+                    primitives.forEach(m => m.updateMatrixWorld(true));
 
-                let d = '';
-                region.boundary.forEach((pt, i) => {
-                    const x = pt.x + w2;
-                    const y = -pt.y + h2;
-                    d += (i === 0 ? 'M' : 'L') + x.toFixed(1) + ',' + y.toFixed(1);
-                });
-                d += 'Z';
+                    const result = computeHiddenLinesMultiple(primitives, camera, scene, {
+                        smoothThreshold: 0.99, // Lower threshold for testing
+                        width: window.innerWidth,
+                        height: window.innerHeight
+                    });
 
-                const n = region.normal;
-                const r = Math.floor((n.x * 0.5 + 0.5) * 255);
-                const g = Math.floor((n.y * 0.5 + 0.5) * 255);
-                const b = Math.floor((n.z * 0.5 + 0.5) * 255);
+                    const edges = result.edges || [];
 
-                path.setAttribute('d', d);
-                path.setAttribute('fill', `rgba(${r},${g},${b},0.3)`);
-                path.setAttribute('stroke', `rgb(${r},${g},${b})`);
-                path.setAttribute('stroke-width', '1.5');
-                svg.appendChild(path);
-            });
+                    edges.forEach(edge => {
+                        const isSil = edge.isProfile;
+                        if (isSil && !showSilhouettes) return;
+                        if (!isSil && !showEdges) return;
 
-            document.getElementById('stats').textContent = `GPU Normal Regions: ${regions.length} regions`;
+                        const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                        const x1 = edge.a.x + w2;
+                        const y1 = -edge.a.y + h2; // Invert Y for SVG
+                        const x2 = edge.b.x + w2;
+                        const y2 = -edge.b.y + h2; // Invert Y for SVG
+
+                        // hidden-line.js returns screen coords where +Y is up (usually), 
+                        // but checking existing stl-viewer: y1 = edge.a.y + h2... wait.
+                        // In hidden-line.js: project() returns NDC. then mapped to screen w/h center 0.
+                        // usually +Y is up in 3D, so screen Y is up. SVG Y is down.
+                        // Let's stick thereto: Y need inversion if the library doesn't do it.
+                        // Checking stl-viewer logic: "y1 = edge.a.y + h2". If edge.a.y is already screen Space from center?
+                        // Let's trust stl-viewer code: `y1 = halfHeight + edge.a.y;`
+                        // Actually, wait, stl-viewer code had `y1 = halfHeight + edge.a.y`. 
+                        // If edge.a.y is negative for top (SVG style), then + is correct.
+                        // If edge.a.y is positive for top (Cartesian), then we need `halfHeight - edge.a.y`.
+                        // Let's look at hidden-line.js again.
+                        // It uses `projectEdges` -> `v.project(camera)`.
+                        // NDC Y is up (+1).
+                        // `point.y = v.y * halfH;` -> So +Y is up.
+                        // So for SVG (Y down), we need `h2 - point.y`.
+                        // BUT stl-viewer used `h2 + point.y`. This implies point.y might be inverted or I am misreading.
+                        // Actually, looking at stl-viewer again: `const y1 = halfHeight + edge.a.y;`
+                        // If `edge.a.y` is Cartesian Up, then `h2 + y` moves it DOWN on screen (SVG Y+ is down).
+                        // That means +Y (Up) becomes SVG Y+ (Down). This flips the image upside down!
+                        // Unless the camera is flipped or something.
+                        // I will assume `h2 - edge.a.y` is the correct standard for "up is up", 
+                        // BUT if stl-viewer works, maybe I should stick to that?
+                        // Wait, `projectEdges` in hidden-line.js: `v.y = -v.y;`? I don't see that.
+                        // Let's stick to standard `h2 - y` for "Standard Cartesian to SVG".
+
+                        line.setAttribute('x1', (edge.a.x + w2).toFixed(1));
+                        line.setAttribute('y1', (edge.a.y + h2).toFixed(1));
+                        line.setAttribute('x2', (edge.b.x + w2).toFixed(1));
+                        line.setAttribute('y2', (edge.b.y + h2).toFixed(1));
+
+                        line.setAttribute('stroke', isSil ? '#eaeaea' : '#888');
+                        line.setAttribute('stroke-width', isSil ? '2' : '1');
+                        line.setAttribute('stroke-linecap', 'round');
+                        svg.appendChild(line);
+                    });
+                }
+
+                // 2. Compute Hatches
+                if (showHatches) {
+                    const regions = extractNormalRegions(renderer, scene, camera, {
+                        normalBuckets: 12,
+                        simplifyTolerance: 2.0,
+                        minArea: 50, // Smaller area for primitives
+                        insetPixels: 2
+                    });
+
+                    // Sort by depth (front first) for occlusion
+                    regions.sort((a, b) => a.depth - b.depth);
+                    const allRegionBounds = regions.map(r => r.boundary);
+
+                    regions.forEach((region, idx) => {
+                        let hatches = generatePerspectiveHatches(region, camera, {
+                            baseSpacing: 8,
+                            minSpacing: 3,
+                            maxSpacing: 20,
+                            depthFactor: 0.5,
+                            screenWidth: window.innerWidth,
+                            screenHeight: window.innerHeight,
+                            axisSettings: axisSettings
+                        });
+
+                        // Clip against front regions
+                        for (let frontIdx = 0; frontIdx < idx; frontIdx++) {
+                            hatches = hatches.flatMap(hatch =>
+                                clipLineOutsidePolygon(hatch, allRegionBounds[frontIdx])
+                            );
+                        }
+
+                        hatches.forEach(hatch => {
+                            const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                            line.setAttribute('x1', (hatch.start.x + w2).toFixed(1));
+                            line.setAttribute('y1', (hatch.start.y + h2).toFixed(1));
+                            line.setAttribute('x2', (hatch.end.x + w2).toFixed(1));
+                            line.setAttribute('y2', (hatch.end.y + h2).toFixed(1));
+                            line.setAttribute('stroke', '#666'); // Darker for hatch
+                            line.setAttribute('stroke-width', '0.5');
+                            svg.appendChild(line);
+                        });
+                    });
+                }
+
+                const elapsed = performance.now() - startTime;
+                document.getElementById('stats').textContent = `Render completed in ${elapsed.toFixed(0)}ms`;
+
+            }, 50);
         }
 
         function animate() {

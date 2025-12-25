@@ -337,13 +337,30 @@
                 const allRegionBounds = regions.map(r => r.boundary);
 
                 regions.forEach((region, idx) => {
+                    // Read user settings for each axis
+                    const axisSettings = {
+                        x: {
+                            rotation: parseFloat(document.getElementById('rotX').value) || 0,
+                            spacing: parseFloat(document.getElementById('spaceX').value) || 8
+                        },
+                        y: {
+                            rotation: parseFloat(document.getElementById('rotY').value) || 0,
+                            spacing: parseFloat(document.getElementById('spaceY').value) || 8
+                        },
+                        z: {
+                            rotation: parseFloat(document.getElementById('rotZ').value) || 0,
+                            spacing: parseFloat(document.getElementById('spaceZ').value) || 8
+                        }
+                    };
+
                     let hatches = generatePerspectiveHatches(region, camera, {
                         baseSpacing: 8,
                         minSpacing: 3,
-                        maxSpacing: 20,
+                        maxSpacing: 40,
                         depthFactor: 0.5,
                         screenWidth: window.innerWidth,
-                        screenHeight: window.innerHeight
+                        screenHeight: window.innerHeight,
+                        axisSettings: axisSettings
                     });
 
                     // Clip against front regions
