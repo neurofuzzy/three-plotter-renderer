@@ -838,6 +838,8 @@ export function testOcclusionFaceID(edges, meshes, camera, width, height, render
     let globalFaceOffset = 0;
 
     for (const mesh of meshes) {
+        // @ts-ignore - Attach offset for later lookup
+        mesh.__globalFaceOffset = globalFaceOffset;
         const geom = mesh.geometry;
         const position = geom.attributes.position;
         const index = geom.index;
@@ -942,13 +944,25 @@ export function testOcclusionFaceID(edges, meshes, camera, width, height, render
         }
 
         // Edge parent face ID is faceIdx + 1 (we offset by 1 to reserve 0 for background)
-        const parentFaceId = edge.faceIdx + 1;
+        // Add the mesh's global offset to its local face index.
+        // @ts-ignore - __globalFaceOffset is attached during mesh processing
+        const parentMeshOffset = edge.mesh.__globalFaceOffset || 0;
+        const parentFaceId = parentMeshOffset + edge.faceIdx + 1;
 
         // Edge is visible if sampled face matches parent face
         if (sampledFaceId === parentFaceId) {
             edge.visible = true;
             visibleEdges.push(edge);
         } else {
+            // Also check the second face if it's a shared edge
+            if (edge.faceIdx2 !== undefined) {
+                const parentFaceId2 = parentMeshOffset + edge.faceIdx2 + 1;
+                if (sampledFaceId === parentFaceId2) {
+                    edge.visible = true;
+                    visibleEdges.push(edge);
+                    continue;
+                }
+            }
             edge.visible = false;
         }
     }
@@ -1196,9 +1210,10 @@ export function filterSmoothSplitEdges(edges, projectedFaces, coplanarThreshold 
  */
 export function testOcclusionMath(edges, projectedFaces, camera) {
     const cameraPos = camera.position;
+    const viewMatrix = camera.matrixWorldInverse;
 
     // JS fallback
-    return testOcclusionMathJS(edges, projectedFaces, cameraPos);
+    return testOcclusionMathJS(edges, projectedFaces, cameraPos, viewMatrix);
 }
 
 /**
@@ -1206,9 +1221,10 @@ export function testOcclusionMath(edges, projectedFaces, camera) {
  * @param {Edge2D[]} edges 
  * @param {ProjectedFace[]} projectedFaces 
  * @param {Vector3} cameraPos 
+ * @param {import('three').Matrix4} [viewMatrix] - Optional view matrix for proper depth calculation
  * @returns {Edge2D[]}
  */
-function testOcclusionMathJS(edges, projectedFaces, cameraPos) {
+function testOcclusionMathJS(edges, projectedFaces, cameraPos, viewMatrix) {
     const visibleEdges = [];
     let debugHitCount = 0;
     let debugOccludedCount = 0;
@@ -1220,9 +1236,17 @@ function testOcclusionMathJS(edges, projectedFaces, cameraPos) {
             (edge.a.y + edge.b.y) / 2
         );
 
-        // Compute edge midpoint depth (distance from camera)
+        // Compute edge midpoint depth using view-space Z-coordinate
+        // This correctly handles perspective distortion (not Euclidean distance)
         const mid3d = edge.midpoint3d;
-        const edgeDepth = cameraPos.distanceTo(mid3d);
+        let edgeDepth;
+        if (viewMatrix) {
+            // Use view-space Z for proper perspective handling
+            edgeDepth = -mid3d.clone().applyMatrix4(viewMatrix).z;
+        } else {
+            // Fallback to Euclidean distance if no view matrix
+            edgeDepth = cameraPos.distanceTo(mid3d);
+        }
 
         let occluded = false;
 
@@ -1997,10 +2021,12 @@ export function computeHiddenLinesMultiple(meshes, camera, scene, options = {}) 
             const b2d = new Vector2(p1.x * halfWidth * internalScale, -p1.y * halfHeight * internalScale);
             const c2d = new Vector2(p2.x * halfWidth * internalScale, -p2.y * halfHeight * internalScale);
 
-            // Compute depths (distance from camera)
-            const depthA = cameraPos.distanceTo(v0);
-            const depthB = cameraPos.distanceTo(v1);
-            const depthC = cameraPos.distanceTo(v2);
+            // Compute depths using view-space Z-coordinate (not Euclidean distance)
+            // This correctly handles perspective distortion for barycentric interpolation
+            const viewMatrix = camera.matrixWorldInverse;
+            const depthA = -v0.clone().applyMatrix4(viewMatrix).z;
+            const depthB = -v1.clone().applyMatrix4(viewMatrix).z;
+            const depthC = -v2.clone().applyMatrix4(viewMatrix).z;
 
             projectedFaces.push({
                 a2d, b2d, c2d,

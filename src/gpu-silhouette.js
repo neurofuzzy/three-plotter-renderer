@@ -60,19 +60,19 @@ export function extractNormalRegions(renderer, scene, camera, options = {}) {
     const depthPixels = renderDepth(renderer, scene, camera, width, height);
 
     // Step 2: Quantize normals to region IDs
-    let { regionMap, normalLookup } = quantizeNormals(normalPixels, width, height, normalBuckets);
+    const { regionMap, normalLookup } = quantizeNormals(normalPixels, width, height, normalBuckets);
 
-
-    // Step 2.5: Apply erosion for insetting (GPU-style morphological erosion)
-    if (insetAmount > 0) {
-        regionMap = erodeRegionMap(regionMap, width, height, insetAmount);
-    }
-
-    // Step 3: Connected component labeling
+    // Step 3: Connected component labeling on ORIGINAL (non-eroded) regions
+    // This gives us the true silhouette boundaries
     const { labels, regionCount } = connectedComponents(regionMap, width, height);
 
+    // Step 3.5: Apply erosion for insetting (only affects hatch clipping, not boundaries)
+    let erodedRegionMap = regionMap;
+    if (insetAmount > 0) {
+        erodedRegionMap = erodeRegionMap(regionMap, width, height, insetAmount);
+    }
 
-    // Step 4: Trace boundaries for each region
+    // Step 4: Trace boundaries for each region (using ORIGINAL labels, not eroded)
     const regions = [];
     for (let regionId = 1; regionId <= regionCount; regionId++) {
         const boundary = traceBoundary(labels, width, height, regionId);
@@ -522,7 +522,9 @@ function perpendicularDistance(point, lineStart, lineEnd) {
     if (lenSq < 1e-10) {
         return Math.sqrt((point.x - lineStart.x) ** 2 + (point.y - lineStart.y) ** 2);
     }
-    const t = ((point.x - lineStart.x) * dx + (point.y - lineStart.y) * dy) / lenSq;
+    // Clamp t to [0,1] to get distance to segment, not infinite line
+    let t = ((point.x - lineStart.x) * dx + (point.y - lineStart.y) * dy) / lenSq;
+    t = Math.max(0, Math.min(1, t));
     const projX = lineStart.x + t * dx;
     const projY = lineStart.y + t * dy;
     return Math.sqrt((point.x - projX) ** 2 + (point.y - projY) ** 2);
