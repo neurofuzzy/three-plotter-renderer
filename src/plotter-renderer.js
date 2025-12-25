@@ -440,25 +440,56 @@ var PlotterRenderer = function () {
           const hatchStroke = _this.hatchOptions.stroke || hatchTheme.hatchStroke;
 
           if (_this.hatchOptions.connectHatches && hatches.length > 0) {
-            // Connect all hatches into one continuous polyline
-            const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-            let d = "";
+            // Connect hatches into continuous polylines, but break at large gaps
+            // Max connection distance: use spacing as threshold (gaps larger than this start new path)
+            const maxConnectDist = (_this.hatchOptions.baseSpacing || 8) * spacingScale * 2;
+
+            const paths = [];
+            let currentPath = "";
+            let prevEnd = null;
+
             hatches.forEach((hatch, hatchIdx) => {
               const start = hatchIdx % 2 === 0 ? hatch.start : hatch.end;
               const end = hatchIdx % 2 === 0 ? hatch.end : hatch.start;
-              if (hatchIdx === 0) {
-                d += `M${lop(start.x)},${lop(-start.y)}`;
-              } else {
-                d += `L${lop(start.x)},${lop(-start.y)}`;  // Connect to next hatch start
+
+              // Check distance from previous end to current start
+              let shouldBreak = false;
+              if (prevEnd) {
+                const dist = Math.sqrt(
+                  (start.x - prevEnd.x) ** 2 + (start.y - prevEnd.y) ** 2
+                );
+                shouldBreak = dist > maxConnectDist;
               }
-              d += `L${lop(end.x)},${lop(-end.y)}`;
+
+              if (hatchIdx === 0 || shouldBreak) {
+                // Start new path
+                if (currentPath) {
+                  paths.push(currentPath);
+                }
+                currentPath = `M${lop(start.x)},${lop(-start.y)}`;
+              } else {
+                // Connect to previous
+                currentPath += `L${lop(start.x)},${lop(-start.y)}`;
+              }
+              currentPath += `L${lop(end.x)},${lop(-end.y)}`;
+              prevEnd = end;
             });
-            path.setAttribute("d", d);
-            path.setAttribute("fill", "none");
-            path.setAttribute("stroke", hatchStroke);
-            path.setAttribute("stroke-width", _this.hatchOptions.strokeWidth);
-            _shading.appendChild(path);
+
+            if (currentPath) {
+              paths.push(currentPath);
+            }
+
+            // Create path elements
+            paths.forEach(d => {
+              const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+              path.setAttribute("d", d);
+              path.setAttribute("fill", "none");
+              path.setAttribute("stroke", hatchStroke);
+              path.setAttribute("stroke-width", _this.hatchOptions.strokeWidth);
+              _shading.appendChild(path);
+            });
           } else {
+
             // Individual hatch lines
             hatches.forEach((hatch, hatchIdx) => {
               const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
