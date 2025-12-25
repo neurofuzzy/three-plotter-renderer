@@ -153,11 +153,10 @@
     <script type="module">
         import * as THREE from 'three';
         import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-        import { computeHiddenLinesMultiple } from './src/hidden-line.js';
-        import { extractNormalRegions } from './src/gpu-silhouette.js';
-        import { generatePerspectiveHatches, clipLineOutsidePolygon } from './src/perspective-hatch.js';
+        import { PlotterRenderer } from './src/plotter-renderer.js';
 
-        let scene, camera, renderer, controls;
+        let scene, camera, glRenderer, controls;
+        let plotterRenderer;
         let primitives = [];
 
         function init() {
@@ -167,11 +166,17 @@
             camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 1, 1000);
             camera.position.set(8, 6, 10);
 
-            renderer = new THREE.WebGLRenderer({ antialias: true });
-            renderer.setSize(window.innerWidth, window.innerHeight);
-            document.body.appendChild(renderer.domElement);
+            // WebGL renderer for 3D preview
+            glRenderer = new THREE.WebGLRenderer({ antialias: true });
+            glRenderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(glRenderer.domElement);
 
-            controls = new OrbitControls(camera, renderer.domElement);
+            // PlotterRenderer for SVG output
+            plotterRenderer = new PlotterRenderer();
+            plotterRenderer.setSize(window.innerWidth, window.innerHeight);
+            plotterRenderer.setGLRenderer(glRenderer);
+
+            controls = new OrbitControls(camera, glRenderer.domElement);
             controls.enableDamping = true;
             controls.dampingFactor = 0.05;
 
@@ -216,11 +221,6 @@
             const gridHelper = new THREE.GridHelper(20, 20, 0x444444, 0x333333);
             scene.add(gridHelper);
 
-            // Setup SVG overlay
-            const svg = document.getElementById('svg-overlay');
-            svg.setAttribute('width', window.innerWidth);
-            svg.setAttribute('height', window.innerHeight);
-
             // Event listeners
             window.addEventListener('resize', onResize);
             document.getElementById('renderBtn').addEventListener('click', render);
@@ -232,16 +232,12 @@
         function onResize() {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-
-            const svg = document.getElementById('svg-overlay');
-            svg.setAttribute('width', window.innerWidth);
-            svg.setAttribute('height', window.innerHeight);
+            glRenderer.setSize(window.innerWidth, window.innerHeight);
+            plotterRenderer.setSize(window.innerWidth, window.innerHeight);
         }
 
         function exportSVG() {
-            const svg = document.getElementById('svg-overlay');
-            const svgContent = svg.outerHTML;
+            const svgContent = plotterRenderer.domElement.outerHTML;
             const blob = new Blob([svgContent], { type: 'image/svg+xml' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
@@ -252,153 +248,55 @@
         }
 
         function render() {
-            const showSilhouettes = document.getElementById('showSilhouettes').checked;
-            const showEdges = document.getElementById('showEdges').checked;
-            const showHatches = document.getElementById('showHatches').checked;
+            document.getElementById('stats').textContent = 'Rendering...';
 
-            // Get settings
-            const axisSettings = {
+            // Configure PlotterRenderer from UI
+            plotterRenderer.showSilhouettes = document.getElementById('showSilhouettes').checked;
+            plotterRenderer.showEdges = document.getElementById('showEdges').checked;
+            plotterRenderer.showHatches = document.getElementById('showHatches').checked;
+
+            // Configure hatch settings from UI inputs
+            plotterRenderer.hatchOptions.axisSettings = {
                 x: {
-                    rotation: parseFloat(document.getElementById('rotX').value),
-                    spacing: parseFloat(document.getElementById('spaceX').value)
+                    rotation: parseFloat(document.getElementById('rotX').value) || 0,
+                    spacing: parseFloat(document.getElementById('spaceX').value) || 8
                 },
                 y: {
-                    rotation: parseFloat(document.getElementById('rotY').value),
-                    spacing: parseFloat(document.getElementById('spaceY').value)
+                    rotation: parseFloat(document.getElementById('rotY').value) || 0,
+                    spacing: parseFloat(document.getElementById('spaceY').value) || 8
                 },
                 z: {
-                    rotation: parseFloat(document.getElementById('rotZ').value),
-                    spacing: parseFloat(document.getElementById('spaceZ').value)
+                    rotation: parseFloat(document.getElementById('rotZ').value) || 0,
+                    spacing: parseFloat(document.getElementById('spaceZ').value) || 8
                 }
             };
 
-            document.getElementById('stats').textContent = 'Rendering...';
+            // Update matrices
+            primitives.forEach(m => m.updateMatrixWorld(true));
 
-            const svg = document.getElementById('svg-overlay');
-            svg.innerHTML = '';
-
-            const w2 = window.innerWidth / 2;
-            const h2 = window.innerHeight / 2;
-
-            // setTimeout to allow UI update
             setTimeout(() => {
                 const startTime = performance.now();
 
-                // 1. Compute Hidden Lines (Edges & Silhouettes)
-                if (showSilhouettes || showEdges) {
-                    // Update matrices
-                    primitives.forEach(m => m.updateMatrixWorld(true));
+                // Clear and render using PlotterRenderer
+                plotterRenderer.clear();
+                plotterRenderer.renderGPULayers(scene, camera);
 
-                    const result = computeHiddenLinesMultiple(primitives, camera, scene, {
-                        smoothThreshold: 0.99, // Lower threshold for testing
-                        width: window.innerWidth,
-                        height: window.innerHeight
-                    });
-
-                    const edges = result.edges || [];
-
-                    edges.forEach(edge => {
-                        const isSil = edge.isProfile;
-                        if (isSil && !showSilhouettes) return;
-                        if (!isSil && !showEdges) return;
-
-                        const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-                        const x1 = edge.a.x + w2;
-                        const y1 = -edge.a.y + h2; // Invert Y for SVG
-                        const x2 = edge.b.x + w2;
-                        const y2 = -edge.b.y + h2; // Invert Y for SVG
-
-                        // hidden-line.js returns screen coords where +Y is up (usually), 
-                        // but checking existing stl-viewer: y1 = edge.a.y + h2... wait.
-                        // In hidden-line.js: project() returns NDC. then mapped to screen w/h center 0.
-                        // usually +Y is up in 3D, so screen Y is up. SVG Y is down.
-                        // Let's stick thereto: Y need inversion if the library doesn't do it.
-                        // Checking stl-viewer logic: "y1 = edge.a.y + h2". If edge.a.y is already screen Space from center?
-                        // Let's trust stl-viewer code: `y1 = halfHeight + edge.a.y;`
-                        // Actually, wait, stl-viewer code had `y1 = halfHeight + edge.a.y`. 
-                        // If edge.a.y is negative for top (SVG style), then + is correct.
-                        // If edge.a.y is positive for top (Cartesian), then we need `halfHeight - edge.a.y`.
-                        // Let's look at hidden-line.js again.
-                        // It uses `projectEdges` -> `v.project(camera)`.
-                        // NDC Y is up (+1).
-                        // `point.y = v.y * halfH;` -> So +Y is up.
-                        // So for SVG (Y down), we need `h2 - point.y`.
-                        // BUT stl-viewer used `h2 + point.y`. This implies point.y might be inverted or I am misreading.
-                        // Actually, looking at stl-viewer again: `const y1 = halfHeight + edge.a.y;`
-                        // If `edge.a.y` is Cartesian Up, then `h2 + y` moves it DOWN on screen (SVG Y+ is down).
-                        // That means +Y (Up) becomes SVG Y+ (Down). This flips the image upside down!
-                        // Unless the camera is flipped or something.
-                        // I will assume `h2 - edge.a.y` is the correct standard for "up is up", 
-                        // BUT if stl-viewer works, maybe I should stick to that?
-                        // Wait, `projectEdges` in hidden-line.js: `v.y = -v.y;`? I don't see that.
-                        // Let's stick to standard `h2 - y` for "Standard Cartesian to SVG".
-
-                        line.setAttribute('x1', (edge.a.x + w2).toFixed(1));
-                        line.setAttribute('y1', (edge.a.y + h2).toFixed(1));
-                        line.setAttribute('x2', (edge.b.x + w2).toFixed(1));
-                        line.setAttribute('y2', (edge.b.y + h2).toFixed(1));
-
-                        line.setAttribute('stroke', isSil ? '#eaeaea' : '#888');
-                        line.setAttribute('stroke-width', isSil ? '2' : '1');
-                        line.setAttribute('stroke-linecap', 'round');
-                        svg.appendChild(line);
-                    });
-                }
-
-                // 2. Compute Hatches
-                if (showHatches) {
-                    const regions = extractNormalRegions(renderer, scene, camera, {
-                        normalBuckets: 12,
-                        simplifyTolerance: 2.0,
-                        minArea: 50, // Smaller area for primitives
-                        insetPixels: 2
-                    });
-
-                    // Sort by depth (front first) for occlusion
-                    regions.sort((a, b) => a.depth - b.depth);
-                    const allRegionBounds = regions.map(r => r.boundary);
-
-                    regions.forEach((region, idx) => {
-                        let hatches = generatePerspectiveHatches(region, camera, {
-                            baseSpacing: 8,
-                            minSpacing: 3,
-                            maxSpacing: 20,
-                            depthFactor: 0.5,
-                            screenWidth: window.innerWidth,
-                            screenHeight: window.innerHeight,
-                            axisSettings: axisSettings
-                        });
-
-                        // Clip against front regions
-                        for (let frontIdx = 0; frontIdx < idx; frontIdx++) {
-                            hatches = hatches.flatMap(hatch =>
-                                clipLineOutsidePolygon(hatch, allRegionBounds[frontIdx])
-                            );
-                        }
-
-                        hatches.forEach(hatch => {
-                            const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-                            line.setAttribute('x1', (hatch.start.x + w2).toFixed(1));
-                            line.setAttribute('y1', (hatch.start.y + h2).toFixed(1));
-                            line.setAttribute('x2', (hatch.end.x + w2).toFixed(1));
-                            line.setAttribute('y2', (hatch.end.y + h2).toFixed(1));
-                            line.setAttribute('stroke', '#666'); // Darker for hatch
-                            line.setAttribute('stroke-width', '0.5');
-                            svg.appendChild(line);
-                        });
-                    });
-                }
+                // Copy to SVG overlay
+                const svgOverlay = document.getElementById('svg-overlay');
+                svgOverlay.innerHTML = plotterRenderer.domElement.innerHTML;
+                svgOverlay.setAttribute('width', window.innerWidth);
+                svgOverlay.setAttribute('height', window.innerHeight);
+                svgOverlay.setAttribute('viewBox', plotterRenderer.domElement.getAttribute('viewBox'));
 
                 const elapsed = performance.now() - startTime;
                 document.getElementById('stats').textContent = `Render completed in ${elapsed.toFixed(0)}ms`;
-
             }, 50);
         }
 
         function animate() {
             requestAnimationFrame(animate);
             controls.update();
-            renderer.render(scene, camera);
+            glRenderer.render(scene, camera);
         }
 
         init();

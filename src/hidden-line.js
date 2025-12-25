@@ -61,6 +61,12 @@ import {
  */
 
 /**
+ * @typedef {Object} Point2D
+ * @property {number} x
+ * @property {number} y
+ */
+
+/**
  * @typedef {Object} ProjectedFace
  * @property {Vector2} a2d - Screen space vertex A
  * @property {Vector2} b2d - Screen space vertex B
@@ -1346,7 +1352,9 @@ export function optimizeEdges(edges, tolerance = 0.5) {
     /** @type {Map<string, Edge2D>} */
     const unique = new Map();
 
+    /** @param {Point2D} p */
     const hashPoint = (p) => `${Math.round(p.x / tolerance)},${Math.round(p.y / tolerance)}`;
+    /** @param {Edge2D} e */
     const hashEdge = (e) => {
         const h1 = hashPoint(e.a);
         const h2 = hashPoint(e.b);
@@ -1377,18 +1385,18 @@ export function optimizeEdges(edges, tolerance = 0.5) {
 export function cleanupOrphanedEdges(edges, tolerance = 1.0, maxExtension = 50) {
     // Build vertex -> edge connectivity map
 
-    const vertexKey = (/** @type {Vector2} */ p) => `${Math.round(p.x / tolerance)},${Math.round(p.y / tolerance)}`;
+    const vertexKey = (/** @type {Point2D} */ p) => `${Math.round(p.x / tolerance)},${Math.round(p.y / tolerance)}`;
 
-    // Map of vertex hash -> { edges: [{edge, endpoint: 'a'|'b'}], point: Vector2 }
+    // Map of vertex hash -> { edges: [{edge, endpoint: 'a'|'b'}], point: Point2D }
     const vertices = new Map();
 
     for (const edge of edges) {
-        for (const endpoint of ['a', 'b']) {
-            /** @type {Edge2D} */
-            const p = edge[endpoint];
+        for (const endpoint of /** @type {const} */ (['a', 'b'])) {
+            /** @type {Point2D} */
+            const p = endpoint === 'a' ? edge.a : edge.b;
             const key = vertexKey(p);
             if (!vertices.has(key)) {
-                vertices.set(key, { edges: [], point: p.clone() });
+                vertices.set(key, { edges: [], point: { x: p.x, y: p.y } });
             }
             vertices.get(key).edges.push({ edge, endpoint });
         }
@@ -1428,11 +1436,11 @@ export function cleanupOrphanedEdges(edges, tolerance = 1.0, maxExtension = 50) 
     // Returns t values for intersection point on both lines, or null if parallel
     /**
      * 
-     * @param {number} p1 
-     * @param {number} d1 
-     * @param {number} p2 
-     * @param {number} d2 
-     * @returns 
+     * @param {Point2D} p1 
+     * @param {Point2D} d1 
+     * @param {Point2D} p2 
+     * @param {Point2D} d2 
+     * @returns {{t1: number, t2: number}|null}
      */
     const lineIntersection = (p1, d1, p2, d2) => {
         const cross = d1.x * d2.y - d1.y * d2.x;
@@ -1455,7 +1463,7 @@ export function cleanupOrphanedEdges(edges, tolerance = 1.0, maxExtension = 50) 
         if (processed.has(orphan.key)) continue;
 
         let bestMatch = null;
-        /** @type {Partial<Vector2> | null} */
+        /** @type {Point2D | null} */
         let bestIntersection = null;
         let bestDist = Infinity;
 
@@ -1566,8 +1574,9 @@ export function cleanupOrphanedEdges(edges, tolerance = 1.0, maxExtension = 50) 
     // Rebuild orphan list after extensions
     const finalVertices = new Map();
     for (const edge of edges) {
-        for (const endpoint of ['a', 'b']) {
-            const p = edge[endpoint];
+        for (const endpoint of /** @type {const} */ (['a', 'b'])) {
+            /** @type {Point2D} */
+            const p = endpoint === 'a' ? edge.a : edge.b;
             const key = vertexKey(p);
             if (!finalVertices.has(key)) {
                 finalVertices.set(key, { edges: [], point: p });
@@ -1692,8 +1701,8 @@ export function removeIsolatedEdges(edges, tolerance = 1.0) {
 
 /**
  * Check if a segment from p1 to p2 crosses any existing edge
- * @param {Vector2} p1 - Start point
- * @param {Vector2} p2 - End point
+ * @param {Point2D} p1 - Start point
+ * @param {Point2D} p2 - End point
  * @param {Edge2D[]} edges - Existing edges to check against
  * @param {Edge2D} excludeEdge1 - Edge to exclude from check
  * @param {Edge2D} excludeEdge2 - Edge to exclude from check
@@ -2193,7 +2202,7 @@ function raySegmentIntersect(ox, oy, rdx, rdy, maxDist, x1, y1, x2, y2) {
  * Check if a 2D point is inside any projected triangle
  * @param {number} px 
  * @param {number} py 
- * @param {Object[]} faces 
+ * @param {ProjectedFace[]} faces 
  * @returns {boolean}
  */
 function pointInAnyFace(px, py, faces) {

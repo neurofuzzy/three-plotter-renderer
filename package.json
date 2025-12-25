@@ -17,9 +17,8 @@
   ],
   "sideEffects": false,
   "scripts": {
-    "build:wasm": "cd wasm/geometry-wasm && wasm-pack build --target web --out-dir ../../src/wasm-pkg",
     "dev": "vite",
-    "build": "npm run build:wasm && vite build",
+    "build": "vite build",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -57,7 +56,6 @@
     "vitest": "^1.0.0"
   },
   "dependencies": {
-    "js-angusj-clipper": "^1.1.0",
     "three": "^0.160.0"
   },
   "peerDependencies": {

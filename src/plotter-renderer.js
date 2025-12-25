@@ -32,21 +32,27 @@ var PlotterRenderer = function () {
     _svgHeightHalf,
     _clearColor = new Color();
 
-  // Setup SVG layers
+  // Add proper SVG namespace attributes for macOS and native rendering
+  _svg.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+  _svg.setAttribute("xmlns:inkscape", "http://www.inkscape.org/namespaces/inkscape");
+  _svg.setAttribute("xmlns:xlink", "http://www.w3.org/1999/xlink");
+  _svg.setAttribute("version", "1.1");
+
+  // Setup SVG layers (order determines z-index: later = on top)
   _silhouettes.setAttribute("inkscape:label", "Silhouettes");
   _silhouettes.setAttribute("inkscape:groupmode", "layer");
   _silhouettes.id = "silhouettes_layer";
   _svg.appendChild(_silhouettes);
 
-  _edges.setAttribute("inkscape:label", "Edges");
-  _edges.setAttribute("inkscape:groupmode", "layer");
-  _edges.id = "edges_layer";
-  _svg.appendChild(_edges);
-
   _shading.setAttribute("inkscape:label", "Shading");
   _shading.setAttribute("inkscape:groupmode", "layer");
   _shading.id = "shading_layer";
   _svg.appendChild(_shading);
+
+  _edges.setAttribute("inkscape:label", "Edges");
+  _edges.setAttribute("inkscape:groupmode", "layer");
+  _edges.id = "edges_layer";
+  _svg.appendChild(_edges);
 
   this.domElement = _svg;
 
@@ -188,38 +194,7 @@ var PlotterRenderer = function () {
         });
       }
 
-      // Hidden Line Edges
-      if (_this.showEdges) {
-        // Collect all meshes from scene
-        const meshes = [];
-        scene.traverse((obj) => {
-          if (obj.isMesh && obj.geometry) {
-            meshes.push(obj);
-          }
-        });
-
-        if (meshes.length > 0) {
-          const result = computeHiddenLinesMultiple(meshes, camera, scene, {
-            smoothThreshold: _this.hiddenLineOptions.smoothThreshold,
-            width: _svgWidth,
-            height: _svgHeight
-          });
-          const edges = result.edges || [];
-
-          edges.forEach(edge => {
-            const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
-            line.setAttribute("x1", lop(edge.a.x));
-            line.setAttribute("y1", lop(edge.a.y));
-            line.setAttribute("x2", lop(edge.b.x));
-            line.setAttribute("y2", lop(edge.b.y));
-            line.setAttribute("stroke", _this.edgeOptions.stroke);
-            line.setAttribute("stroke-width", _this.edgeOptions.strokeWidth);
-            _edges.appendChild(line);
-          });
-        }
-      }
-
-      // GPU Perspective Hatches
+      // GPU Perspective Hatches (render before edges so edges appear on top)
       if (_this.showHatches) {
         // Sort by depth (front first) for occlusion
         regions.sort((a, b) => a.depth - b.depth);
@@ -255,6 +230,37 @@ var PlotterRenderer = function () {
             _shading.appendChild(path);
           });
         });
+      }
+
+      // Hidden Line Edges (render last so they appear on top)
+      if (_this.showEdges) {
+        // Collect all meshes from scene
+        const meshes = [];
+        scene.traverse((obj) => {
+          if (obj.isMesh && obj.geometry) {
+            meshes.push(obj);
+          }
+        });
+
+        if (meshes.length > 0) {
+          const result = computeHiddenLinesMultiple(meshes, camera, scene, {
+            smoothThreshold: _this.hiddenLineOptions.smoothThreshold,
+            width: _svgWidth,
+            height: _svgHeight
+          });
+          const edges = result.edges || [];
+
+          edges.forEach(edge => {
+            const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+            line.setAttribute("x1", lop(edge.a.x));
+            line.setAttribute("y1", lop(edge.a.y));
+            line.setAttribute("x2", lop(edge.b.x));
+            line.setAttribute("y2", lop(edge.b.y));
+            line.setAttribute("stroke", _this.edgeOptions.stroke);
+            line.setAttribute("stroke-width", _this.edgeOptions.strokeWidth);
+            _edges.appendChild(line);
+          });
+        }
       }
     }
   };
