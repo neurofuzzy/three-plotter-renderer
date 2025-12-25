@@ -100,27 +100,58 @@ export function generatePerspectiveHatches(region, camera, options = {}) {
         depthFactor = 0.5,    // How much depth affects density
         screenWidth = 1200,
         screenHeight = 800,
-        axisSettings = {}     // { x: { rotation: 0, spacing: 10 }, y: ... }
+        axisSettings = {},    // { x: { rotation: 0, spacing: 10 }, y: ... }
+        brightness = null,    // 0-1 lighting brightness (null = disabled)
+        invertBrightness = false  // True for white-on-black (bright = dense)
     } = options;
 
-    const { boundary, normal, depth = 0.5 } = region;
-    if (boundary.length < 3) return [];
+    const { boundary, hatchBoundary, normal, depth = 0.5 } = region;
+    // Use hatchBoundary for clipping if available (inset boundary), otherwise use boundary
+    const clipBoundary = hatchBoundary || boundary;
+    if (clipBoundary.length < 3) return [];
 
-    // Determine dominant axis
-    const ax = Math.abs(normal.x);
-    const ay = Math.abs(normal.y);
-    const az = Math.abs(normal.z);
 
-    let axis = 'y'; // default up
-    if (ax >= ay && ax >= az) axis = 'x';
-    else if (az >= ay && az >= ax) axis = 'z';
+    // Normal is in VIEW SPACE (from MeshNormalMaterial)
+    // Transform to WORLD SPACE using camera quaternion
+    const worldNormal = normal.clone().applyQuaternion(camera.quaternion);
 
-    // Get settings for this axis
-    const settings = axisSettings[axis] || {};
-    const rotationDeg = settings.rotation || 0;
-    const spacingOverride = settings.spacing;
+    // Quantize to avoid floating-point variations for same-facing faces
+    const qx = Math.round(worldNormal.x * 10) / 10;
+    const qy = Math.round(worldNormal.y * 10) / 10;
+    const qz = Math.round(worldNormal.z * 10) / 10;
 
-    console.log(`[Hatch] normal=(${normal.x.toFixed(2)}, ${normal.y.toFixed(2)}, ${normal.z.toFixed(2)}) => axis=${axis}, rotation=${rotationDeg}, spacing=${spacingOverride}`);
+    // Blend axis settings based on world-space normal alignment
+    const ax = Math.abs(qx);
+    const ay = Math.abs(qy);
+    const az = Math.abs(qz);
+    const total = ax + ay + az || 1;  // Avoid divide by zero
+
+    // Weight for each axis
+    const wx = ax / total;
+    const wy = ay / total;
+    const wz = az / total;
+
+    // Debug: Log first 5 regions
+    if (region.regionId <= 5) {
+        console.log(`[Hatch] Region ${region.regionId}: viewNormal=(${normal.x.toFixed(2)}, ${normal.y.toFixed(2)}, ${normal.z.toFixed(2)}) -> worldNormal=(${qx}, ${qy}, ${qz}) -> weights=(wx:${wx.toFixed(2)}, wy:${wy.toFixed(2)}, wz:${wz.toFixed(2)})`);
+    }
+
+    // Get settings for each axis (defaults)
+    const xSettings = axisSettings.x || { rotation: 0, spacing: baseSpacing };
+    const ySettings = axisSettings.y || { rotation: 0, spacing: baseSpacing };
+    const zSettings = axisSettings.z || { rotation: 0, spacing: baseSpacing };
+
+    // Blend spacing
+    const spacingOverride =
+        wx * (xSettings.spacing || baseSpacing) +
+        wy * (ySettings.spacing || baseSpacing) +
+        wz * (zSettings.spacing || baseSpacing);
+
+    // Blend rotation (weighted average)
+    const rotationDeg =
+        wx * (xSettings.rotation || 0) +
+        wy * (ySettings.rotation || 0) +
+        wz * (zSettings.rotation || 0);
 
     // Get hatch direction from normal
     const { direction, vanishingPoint } = computeHatchDirection(
@@ -145,14 +176,39 @@ export function generatePerspectiveHatches(region, camera, options = {}) {
     // Calculate spacing based on depth (closer = denser)
     // Use override if available, otherwise baseSpacing
     const effectiveBase = spacingOverride !== undefined ? spacingOverride : baseSpacing;
-    const spacing = Math.max(minSpacing, Math.min(maxSpacing,
+    let spacing = Math.max(minSpacing, Math.min(maxSpacing,
         effectiveBase + (depth * depthFactor * (maxSpacing - minSpacing))
     ));
 
-    // Get bounding box of region
+    if (brightness !== null && brightness !== undefined) {
+        // brightness: 0 = shadow/dark, 1 = lit/bright
+        // 
+        // For BOTH themes, lit faces should have LESS ink (more spacing):
+        // - Light theme (black ink on white): lit = sparse hatches (more white showing)
+        // - Dark theme (white ink on black): lit = sparse hatches (more black showing)
+        //
+        // invertBrightness: 
+        //   false (light theme) = bright areas get more spacing (less ink)
+        //   true (dark theme) = ALSO bright areas get more spacing (less ink)
+        //
+        // So invert actually controls the paper color interpretation, not the brightness->spacing mapping
+        // Both cases want: bright = more spacing
+
+        // Map brightness to spacing multiplier (0.5x for dark to 2x for bright)
+        const brightnessMultiplier = 0.5 + brightness * 1.5;
+        spacing = spacing * brightnessMultiplier;
+
+        // If spacing exceeds maxSpacing, skip hatching entirely for this region
+        if (spacing > maxSpacing) {
+            return [];
+        }
+        spacing = Math.max(minSpacing, spacing);
+    }
+
+    // Get bounding box of region (use clipBoundary for hatch generation)
     let minX = Infinity, maxX = -Infinity;
     let minY = Infinity, maxY = -Infinity;
-    for (const pt of boundary) {
+    for (const pt of clipBoundary) {
         minX = Math.min(minX, pt.x);
         maxX = Math.max(maxX, pt.x);
         minY = Math.min(minY, pt.y);
@@ -200,7 +256,7 @@ export function generatePerspectiveHatches(region, camera, options = {}) {
             const lineStart = vanishingPoint.clone();
             const lineEnd = vanishingPoint.clone().add(dir.clone().multiplyScalar(vpDist * 10));
 
-            const clipped = clipLineToPolygon({ start: lineStart, end: lineEnd }, boundary);
+            const clipped = clipLineToPolygon({ start: lineStart, end: lineEnd }, clipBoundary);
             hatches.push(...clipped);
         }
     } else {
@@ -216,7 +272,7 @@ export function generatePerspectiveHatches(region, camera, options = {}) {
             const lineStart = lineCenter.clone().add(finalDirection.clone().multiplyScalar(-diag));
             const lineEnd = lineCenter.clone().add(finalDirection.clone().multiplyScalar(diag));
 
-            const clipped = clipLineToPolygon({ start: lineStart, end: lineEnd }, boundary);
+            const clipped = clipLineToPolygon({ start: lineStart, end: lineEnd }, clipBoundary);
             hatches.push(...clipped);
         }
     }
