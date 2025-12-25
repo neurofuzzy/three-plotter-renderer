@@ -17,6 +17,7 @@ import {
     ShaderMaterial,
     RGBADepthPacking,
     NearestFilter,
+    FrontSide,
     Vector2,
     Vector3
 } from 'three';
@@ -62,19 +63,13 @@ export function extractNormalRegions(renderer, scene, camera, options = {}) {
     // Step 2: Quantize normals to region IDs
     const { regionMap, normalLookup } = quantizeNormals(normalPixels, width, height, normalBuckets);
 
-    // Step 3: Connected component labeling on ORIGINAL (non-eroded) regions
-    // This gives us the true silhouette boundaries
-    const { labels, regionCount } = connectedComponents(regionMap, width, height);
+    // Step 3: Connected component labeling
+    const { labels, regionCount, labelToNormalId } = connectedComponents(regionMap, width, height);
 
-    // Step 3.5: Apply erosion for insetting (only affects hatch clipping, not boundaries)
-    let erodedRegionMap = regionMap;
-    if (insetAmount > 0) {
-        erodedRegionMap = erodeRegionMap(regionMap, width, height, insetAmount);
-    }
-
-    // Step 4: Trace boundaries for each region (using ORIGINAL labels, not eroded)
+    // Step 4: Trace boundaries for each region
     const regions = [];
     for (let regionId = 1; regionId <= regionCount; regionId++) {
+
         const boundary = traceBoundary(labels, width, height, regionId);
         if (boundary.length < 3) continue;
 
@@ -84,18 +79,28 @@ export function extractNormalRegions(renderer, scene, camera, options = {}) {
 
         if (area < minArea) continue;
 
-
-        // Find the normal for this region (sample from center)
-        const normal = findRegionNormal(labels, regionMap, normalLookup, width, height, regionId);
+        // Get normal directly from the mapping (no sampling needed!)
+        const normalId = labelToNormalId[regionId];
+        const normal = normalLookup[normalId] || new Vector3(0, 0, 1);
 
         // Sample depth at region center
         const depth = sampleRegionDepth(labels, depthPixels, width, height, regionId);
 
+        // Create inset boundary for hatch clipping (mathematical inset, not pixel erosion)
+        const scaledInset = insetAmount / resolution;  // Convert back to screen coords
+
+        // First convert to screen coords for inset calculation
+        const screenBoundary = simplified.map(p => ({
+            x: (p.x / resolution) - size.x / 2,
+            y: (p.y / resolution) - size.y / 2
+        }));
+
+        // Apply mathematical inset
+        const insetBoundaryScreen = insetPolygon(screenBoundary, scaledInset);
+
         regions.push({
-            boundary: simplified.map(p => new Vector2(
-                (p.x / resolution) - size.x / 2,
-                (p.y / resolution) - size.y / 2  // Y already flipped during readback
-            )),
+            boundary: screenBoundary.map(p => new Vector2(p.x, p.y)),
+            hatchBoundary: insetBoundaryScreen.map(p => new Vector2(p.x, p.y)),
             normal,
             depth,  // 0-1 normalized depth
             area: area / (resolution * resolution),
@@ -104,26 +109,49 @@ export function extractNormalRegions(renderer, scene, camera, options = {}) {
     }
 
 
+    // Step 5: Detect holes (regions entirely inside another region)
+    detectHoles(regions);
+
     return regions;
 }
 
+
 /**
- * Render normals to pixel buffer
+ * Render normals to pixel buffer (exported for debugging)
  */
-function renderNormals(renderer, scene, camera, width, height) {
+export function renderNormals(renderer, scene, camera, width, height) {
     const target = new WebGLRenderTarget(width, height, {
         minFilter: NearestFilter,
         magFilter: NearestFilter
     });
 
     // Use MeshNormalMaterial for normal extraction
-    // Note: This outputs VIEW SPACE normals, not world space
+    // This outputs VIEW SPACE normals - we'll transform to world space later
     const normalMaterial = new MeshNormalMaterial({ flatShading: true });
 
     const originalMaterials = new Map();
     const hiddenObjects = [];
 
     scene.traverse(obj => {
+        // Skip objects marked for SVG exclusion (including checking parent hierarchy)
+        let shouldExclude = false;
+        let parent = obj;
+        while (parent) {
+            if (parent.userData && parent.userData.excludeFromSVG) {
+                shouldExclude = true;
+                break;
+            }
+            parent = parent.parent;
+        }
+
+        if (shouldExclude) {
+            if (obj.visible) {
+                hiddenObjects.push(obj);
+                obj.visible = false;
+            }
+            return;
+        }
+
         // Only render Mesh objects, hide helpers/lines
         if (obj.isMesh) {
             originalMaterials.set(obj, obj.material);
@@ -137,8 +165,15 @@ function renderNormals(renderer, scene, camera, width, height) {
         }
     });
 
+    // Save and clear scene background to avoid it being rendered to the target
+    const originalBackground = scene.background;
+    scene.background = null;
+
     renderer.setRenderTarget(target);
     renderer.render(scene, camera);
+
+    // Restore scene background
+    scene.background = originalBackground;
 
     scene.traverse(obj => {
         if (obj.isMesh && originalMaterials.has(obj)) {
@@ -177,6 +212,25 @@ function renderDepth(renderer, scene, camera, width, height) {
     const hiddenObjects = [];
 
     scene.traverse(obj => {
+        // Skip objects marked for SVG exclusion (including checking parent hierarchy)
+        let shouldExclude = false;
+        let parent = obj;
+        while (parent) {
+            if (parent.userData && parent.userData.excludeFromSVG) {
+                shouldExclude = true;
+                break;
+            }
+            parent = parent.parent;
+        }
+
+        if (shouldExclude) {
+            if (obj.visible) {
+                hiddenObjects.push(obj);
+                obj.visible = false;
+            }
+            return;
+        }
+
         if (obj.isMesh) {
             originalMaterials.set(obj, obj.material);
             obj.material = depthMaterial;
@@ -188,8 +242,15 @@ function renderDepth(renderer, scene, camera, width, height) {
         }
     });
 
+    // Save and clear scene background to avoid it being rendered to the target
+    const originalBackground = scene.background;
+    scene.background = null;
+
     renderer.setRenderTarget(target);
     renderer.render(scene, camera);
+
+    // Restore scene background
+    scene.background = originalBackground;
 
     scene.traverse(obj => {
         if (obj.isMesh && originalMaterials.has(obj)) {
@@ -277,6 +338,7 @@ function erodeRegionMap(regionMap, width, height, iterations) {
 }
 
 /**
+
  * Quantize normals into buckets and create region map
  * Returns regionMap (pixel -> regionId) and normalLookup (regionId -> Vector3)
  */
@@ -382,8 +444,9 @@ function connectedComponents(regionMap, width, height) {
         }
     }
 
-    // Second pass: flatten labels
+    // Second pass: flatten labels and track which normalId each label maps to
     const labelRemap = {};
+    const labelToNormalId = {}; // Maps final label -> regionMap value (normalId)
     let finalLabel = 0;
 
     for (let i = 0; i < width * height; i++) {
@@ -392,11 +455,13 @@ function connectedComponents(regionMap, width, height) {
         if (labelRemap[root] === undefined) {
             finalLabel++;
             labelRemap[root] = finalLabel;
+            // Capture the normalId for this label (from regionMap)
+            labelToNormalId[finalLabel] = regionMap[i];
         }
         labels[i] = labelRemap[root];
     }
 
-    return { labels, regionCount: finalLabel };
+    return { labels, regionCount: finalLabel, labelToNormalId };
 }
 
 /**
@@ -539,6 +604,147 @@ function polygonArea(points) {
     }
     return area / 2;
 }
+
+/**
+ * Inset a polygon by a fixed distance (shrink inward)
+ * Uses simple vertex offset along bisector of adjacent edges
+ * @param {Array<{x: number, y: number}>} polygon
+ * @param {number} amount - Inset amount in same units as polygon
+ * @returns {Array<{x: number, y: number}>}
+ */
+function insetPolygon(polygon, amount) {
+    if (polygon.length < 3 || amount <= 0) return polygon;
+
+    const n = polygon.length;
+    const result = [];
+
+    // Determine winding direction (positive area = CCW)
+    const area = polygonArea(polygon);
+    const sign = area > 0 ? 1 : -1;
+
+    for (let i = 0; i < n; i++) {
+        const prev = polygon[(i - 1 + n) % n];
+        const curr = polygon[i];
+        const next = polygon[(i + 1) % n];
+
+        // Compute edge vectors
+        const dx1 = curr.x - prev.x;
+        const dy1 = curr.y - prev.y;
+        const dx2 = next.x - curr.x;
+        const dy2 = next.y - curr.y;
+
+        // Normalize
+        const len1 = Math.sqrt(dx1 * dx1 + dy1 * dy1) || 1;
+        const len2 = Math.sqrt(dx2 * dx2 + dy2 * dy2) || 1;
+        const nx1 = dx1 / len1, ny1 = dy1 / len1;
+        const nx2 = dx2 / len2, ny2 = dy2 / len2;
+
+        // Inward normals (perpendicular, pointing inward based on winding)
+        const inx1 = -ny1 * sign, iny1 = nx1 * sign;
+        const inx2 = -ny2 * sign, iny2 = nx2 * sign;
+
+        // Average the two inward normals (bisector direction)
+        let bx = inx1 + inx2;
+        let by = iny1 + iny2;
+        const blen = Math.sqrt(bx * bx + by * by) || 1;
+        bx /= blen;
+        by /= blen;
+
+        // Scale by amount (adjust for angle at corner)
+        const dot = inx1 * inx2 + iny1 * iny2;
+        const scale = amount / Math.sqrt((1 + dot) / 2 + 0.001); // Miter factor
+
+        result.push({
+            x: curr.x + bx * Math.min(scale, amount * 3), // Cap miter
+            y: curr.y + by * Math.min(scale, amount * 3)
+        });
+    }
+
+    return result;
+}
+
+
+/**
+ * Get axis-aligned bounding box for a polygon
+ * @param {Array<{x: number, y: number}>} boundary
+ * @returns {{minX: number, maxX: number, minY: number, maxY: number}}
+ */
+function getBoundingBox(boundary) {
+    let minX = Infinity, maxX = -Infinity;
+    let minY = Infinity, maxY = -Infinity;
+    for (const pt of boundary) {
+        minX = Math.min(minX, pt.x);
+        maxX = Math.max(maxX, pt.x);
+        minY = Math.min(minY, pt.y);
+        maxY = Math.max(maxY, pt.y);
+    }
+    return { minX, maxX, minY, maxY };
+}
+
+/**
+ * Check if inner bbox is fully contained within outer bbox
+ */
+function bboxContains(outer, inner) {
+    return inner.minX >= outer.minX && inner.maxX <= outer.maxX &&
+        inner.minY >= outer.minY && inner.maxY <= outer.maxY;
+}
+
+/**
+ * Point-in-polygon test using ray casting (even-odd rule)
+ */
+function pointInPolygon(x, y, polygon) {
+    let inside = false;
+    const n = polygon.length;
+    for (let i = 0, j = n - 1; i < n; j = i++) {
+        const xi = polygon[i].x, yi = polygon[i].y;
+        const xj = polygon[j].x, yj = polygon[j].y;
+        if (((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi)) {
+            inside = !inside;
+        }
+    }
+    return inside;
+}
+
+/**
+ * Detect which regions are holes (entirely inside another region)
+ * Uses bounding box as early-out, then full point-in-polygon check
+ */
+function detectHoles(regions) {
+    // Precompute bounding boxes
+    const bboxes = regions.map(r => getBoundingBox(r.boundary));
+
+    for (let i = 0; i < regions.length; i++) {
+        const region = regions[i];
+        region.isHole = false;
+        region.parentRegionId = null;
+
+        const bbox = bboxes[i];
+
+        for (let j = 0; j < regions.length; j++) {
+            if (i === j) continue;
+
+            const other = regions[j];
+            const otherBbox = bboxes[j];
+
+            // Early-out: bounding box check
+            if (!bboxContains(otherBbox, bbox)) continue;
+
+            // Full check: all boundary points must be inside other polygon
+            const allInside = region.boundary.every(pt =>
+                pointInPolygon(pt.x, pt.y, other.boundary)
+            );
+
+            if (allInside) {
+                region.isHole = true;
+                region.parentRegionId = other.regionId;
+                break;
+            }
+        }
+    }
+}
+
+
+
 
 /**
  * Debug visualization: show normal regions colored by their normal direction

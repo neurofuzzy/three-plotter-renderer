@@ -13,9 +13,11 @@
 
         :root {
             --bg-dark: #1a1a2e;
-            --bg-glass: rgba(22, 33, 62, 0.85);
+            --bg-panel: rgba(22, 33, 62, 0.92);
             --accent: #0f3460;
             --accent-hover: #e94560;
+            --primary: #2d8a5a;
+            --primary-hover: #3da86e;
             --text: #eaeaea;
             --text-muted: #a0a0a0;
             --border: rgba(255, 255, 255, 0.1);
@@ -28,61 +30,6 @@
             color: var(--text);
         }
 
-        #info {
-            position: absolute;
-            top: 16px;
-            left: 16px;
-            background: var(--bg-glass);
-            backdrop-filter: blur(12px);
-            -webkit-backdrop-filter: blur(12px);
-            border: 1px solid var(--border);
-            border-radius: 12px;
-            padding: 16px 20px;
-            z-index: 100;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-        }
-
-        #info .controls {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            flex-wrap: wrap;
-        }
-
-        #info button,
-        #info select {
-            padding: 10px 18px;
-            font-size: 14px;
-            cursor: pointer;
-            border-radius: 8px;
-            border: 1px solid var(--border);
-            background: var(--accent);
-            color: var(--text);
-            transition: all 0.2s ease;
-            font-family: inherit;
-        }
-
-        #info button:hover,
-        #info select:hover {
-            background: var(--accent-hover);
-            border-color: var(--accent-hover);
-        }
-
-        #info select {
-            background: rgba(15, 52, 96, 0.8);
-        }
-
-        #info select option {
-            background: #16213e;
-            color: var(--text);
-        }
-
-        #stats {
-            margin-top: 12px;
-            font-size: 13px;
-            color: var(--text-muted);
-        }
-
         canvas {
             display: block;
         }
@@ -93,91 +40,360 @@
             left: 0;
             pointer-events: none;
         }
+
+        /* Side Panel */
+        #panel {
+            position: absolute;
+            top: 16px;
+            right: 16px;
+            bottom: 16px;
+            width: 280px;
+            background: var(--bg-panel);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            display: flex;
+            flex-direction: column;
+            z-index: 100;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+
+        #panel-header {
+            padding: 16px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        #panel-header h2 {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        #stats {
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+        #panel-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 12px;
+        }
+
+        #panel-content::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        #panel-content::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 3px;
+        }
+
+        .section {
+            margin-bottom: 16px;
+        }
+
+        .section-title {
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-muted);
+            margin-bottom: 8px;
+        }
+
+        .control-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 8px;
+            font-size: 13px;
+        }
+
+        .control-row label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            cursor: pointer;
+        }
+
+        .control-label {
+            min-width: 60px;
+            color: var(--text-muted);
+        }
+
+        .input-group {
+            display: flex;
+            gap: 4px;
+            flex: 1;
+        }
+
+        .input-with-label {
+            display: flex;
+            align-items: center;
+            gap: 2px;
+        }
+
+        .axis-label {
+            font-size: 10px;
+            color: var(--text-muted);
+            min-width: 12px;
+        }
+
+        input[type="number"] {
+            width: 45px;
+            padding: 4px 6px;
+            border-radius: 4px;
+            border: 1px solid var(--border);
+            background: rgba(0, 0, 0, 0.3);
+            color: var(--text);
+            font-size: 12px;
+        }
+
+        input[type="checkbox"] {
+            cursor: pointer;
+        }
+
+        select {
+            flex: 1;
+            padding: 6px 8px;
+            border-radius: 4px;
+            border: 1px solid var(--border);
+            background: rgba(0, 0, 0, 0.3);
+            color: var(--text);
+            font-size: 12px;
+            cursor: pointer;
+        }
+
+        select option {
+            background: #16213e;
+        }
+
+        #panel-footer {
+            padding: 12px;
+            border-top: 1px solid var(--border);
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 8px;
+        }
+
+        button {
+            flex: 1;
+            padding: 10px;
+            border-radius: 6px;
+            border: none;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        button.primary {
+            background: var(--primary);
+            color: white;
+        }
+
+        button.primary:hover {
+            background: var(--primary-hover);
+        }
+
+        button.secondary {
+            background: var(--accent);
+            color: var(--text);
+        }
+
+        button.secondary:hover {
+            background: var(--accent-hover);
+        }
     </style>
 </head>
 
 <body>
-    <div id="info">
-        <div class="controls">
-            <select id="modelSelect">
-                <option value="./models/example01.stl">Example 01 (Building)</option>
-                <option value="./models/example02.stl">Example 02 (Complex)</option>
-                <option value="./models/example03.stl" selected>Example 03 (House)</option>
-            </select>
-            <div
-                style="display: flex; gap: 8px; align-items: center; margin-left: 10px; border-left: 1px solid var(--border); padding-left: 10px;">
-                <span title="Hatch Rotation (Deg)">Hatch Rot:</span>
-                <input type="number" id="rotX" value="45"
-                    style="width: 50px; padding: 6px; border-radius: 4px; border: 1px solid var(--border); background: rgba(0,0,0,0.2); color: var(--text);"
-                    title="X Rotation">
-                <input type="number" id="rotY" value="45"
-                    style="width: 50px; padding: 6px; border-radius: 4px; border: 1px solid var(--border); background: rgba(0,0,0,0.2); color: var(--text);"
-                    title="Y Rotation">
-                <input type="number" id="rotZ" value="45"
-                    style="width: 50px; padding: 6px; border-radius: 4px; border: 1px solid var(--border); background: rgba(0,0,0,0.2); color: var(--text);"
-                    title="Z Rotation">
-            </div>
-            <div
-                style="display: flex; gap: 8px; align-items: center; margin-left: 10px; border-left: 1px solid var(--border); padding-left: 10px;">
-                <span title="Absolute Spacing (Units)">Spacing:</span>
-                <input type="number" id="spaceX" value="10.0" step="1.0"
-                    style="width: 50px; padding: 6px; border-radius: 4px; border: 1px solid var(--border); background: rgba(0,0,0,0.2); color: var(--text);"
-                    title="X Spacing">
-                <input type="number" id="spaceY" value="10.0" step="1.0"
-                    style="width: 50px; padding: 6px; border-radius: 4px; border: 1px solid var(--border); background: rgba(0,0,0,0.2); color: var(--text);"
-                    title="Y Spacing">
-                <input type="number" id="spaceZ" value="10.0" step="1.0"
-                    style="width: 50px; padding: 6px; border-radius: 4px; border: 1px solid var(--border); background: rgba(0,0,0,0.2); color: var(--text);"
-                    title="Z Spacing">
-            </div>
-            <button id="exportBtn">Export SVG</button>
-            <div
-                style="display: flex; gap: 12px; align-items: center; margin-left: 10px; border-left: 1px solid var(--border); padding-left: 10px;">
-                <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
-                    <input type="checkbox" id="showSilhouettes" style="cursor: pointer;">
-                    Silhouettes
-                </label>
-                <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
-                    <input type="checkbox" id="showEdges" checked style="cursor: pointer;">
-                    Edges
-                </label>
-                <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
-                    <input type="checkbox" id="showHatches" checked style="cursor: pointer;">
-                    Hatches
-                </label>
-            </div>
-            <button id="renderBtn" style="background: #2d8a5a; font-weight: bold; margin-left: 10px;">Render</button>
-        </div>
-        <div id="stats">Use mouse to orbit, scroll to zoom</div>
-    </div>
     <svg id="svg-overlay" xmlns="http://www.w3.org/2000/svg"></svg>
+    <canvas id="debug-canvas"
+        style="position: absolute; top: 0; left: 0; pointer-events: none; display: none;"></canvas>
+
+    <div id="panel">
+        <div id="panel-header">
+            <h2>STL Hidden Line Viewer</h2>
+            <div id="stats">Use mouse to orbit, scroll to zoom</div>
+        </div>
+
+        <div id="panel-content">
+            <!-- Model Section -->
+            <div class="section">
+                <div class="section-title">Model</div>
+                <div class="control-row">
+                    <select id="modelSelect">
+                        <option value="./models/example01.stl">Example 01 (Building)</option>
+                        <option value="./models/example02.stl">Example 02 (Complex)</option>
+                        <option value="./models/example03.stl" selected>Example 03 (House)</option>
+                        <option value="./models/SnowflakeTealight2.stl">Snowflake Tealight</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Theme Section -->
+            <div class="section">
+                <div class="section-title">Theme</div>
+                <div class="control-row">
+                    <label><input type="radio" name="theme" id="themeDark" checked> Dark (white on black)</label>
+                </div>
+                <div class="control-row">
+                    <label><input type="radio" name="theme" id="themeLight"> Light (black on white)</label>
+                </div>
+            </div>
+
+            <!-- Layers Section -->
+            <div class="section">
+                <div class="section-title">Layers</div>
+                <div class="control-row">
+                    <label><input type="checkbox" id="showSilhouettes"> Silhouettes</label>
+                </div>
+                <div class="control-row">
+                    <label><input type="checkbox" id="showEdges" checked> Edges</label>
+                </div>
+                <div class="control-row">
+                    <label><input type="checkbox" id="showHatches" checked> Hatches</label>
+                </div>
+            </div>
+
+            <!-- Hatching Section -->
+            <div class="section">
+                <div class="section-title">Hatching</div>
+                <div class="control-row">
+                    <span class="control-label">Rotation</span>
+                    <div class="input-group">
+                        <div class="input-with-label">
+                            <span class="axis-label">X</span>
+                            <input type="number" id="rotX" value="45" title="X Axis Rotation">
+                        </div>
+                        <div class="input-with-label">
+                            <span class="axis-label">Y</span>
+                            <input type="number" id="rotY" value="45" title="Y Axis Rotation">
+                        </div>
+                        <div class="input-with-label">
+                            <span class="axis-label">Z</span>
+                            <input type="number" id="rotZ" value="45" title="Z Axis Rotation">
+                        </div>
+                    </div>
+                </div>
+                <div class="control-row">
+                    <span class="control-label">Spacing</span>
+                    <div class="input-group">
+                        <div class="input-with-label">
+                            <span class="axis-label">X</span>
+                            <input type="number" id="spaceX" value="10" step="1" title="X Axis Spacing">
+                        </div>
+                        <div class="input-with-label">
+                            <span class="axis-label">Y</span>
+                            <input type="number" id="spaceY" value="10" step="1" title="Y Axis Spacing">
+                        </div>
+                        <div class="input-with-label">
+                            <span class="axis-label">Z</span>
+                            <input type="number" id="spaceZ" value="10" step="1" title="Z Axis Spacing">
+                        </div>
+                    </div>
+                </div>
+                <div class="control-row">
+                    <span class="control-label">Inset</span>
+                    <div class="input-group">
+                        <input type="number" id="insetPixels" value="2" step="1" min="0" title="Inset from edges (px)">
+                    </div>
+                </div>
+                <div class="control-row">
+                    <label><input type="checkbox" id="connectHatches"> Connect Lines</label>
+                </div>
+
+            </div>
+
+            <!-- Lighting Section -->
+            <div class="section">
+                <div class="section-title">Lighting</div>
+                <div class="control-row">
+                    <label><input type="checkbox" id="brightnessShading" checked> Brightness Shading</label>
+                </div>
+                <div class="control-row">
+                    <span class="control-label">Spacing</span>
+                    <div class="input-group">
+                        <div class="input-with-label">
+                            <span class="axis-label">Min</span>
+                            <input type="number" id="minSpacing" value="3" step="1" min="1" title="Min Spacing">
+                        </div>
+                        <div class="input-with-label">
+                            <span class="axis-label">Max</span>
+                            <input type="number" id="maxSpacing" value="40" step="1" min="1" title="Max Spacing">
+                        </div>
+                    </div>
+                </div>
+
+
+                <div class="control-row">
+                    <span class="control-label">Position</span>
+                    <div class="input-group">
+                        <div class="input-with-label">
+                            <span class="axis-label">X</span>
+                            <input type="number" id="lightX" value="300" step="50" title="Light X">
+                        </div>
+                        <div class="input-with-label">
+                            <span class="axis-label">Y</span>
+                            <input type="number" id="lightY" value="1000" step="50" title="Light Y">
+                        </div>
+                        <div class="input-with-label">
+                            <span class="axis-label">Z</span>
+                            <input type="number" id="lightZ" value="500" step="50" title="Light Z">
+                        </div>
+                    </div>
+                </div>
+                <div class="control-row">
+                    <span class="control-label">Intensity</span>
+                    <div class="input-group">
+                        <input type="number" id="lightIntensity" value="10" step="0.1" min="0" title="Light Intensity">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="panel-footer">
+            <div class="btn-group">
+                <button id="renderBtn" class="primary">Render</button>
+                <button id="debugBtn" class="secondary">Debug Normals</button>
+                <button id="exportBtn" class="secondary">Export SVG</button>
+            </div>
+        </div>
+    </div>
+
     <script type="module">
         import * as THREE from 'three';
         import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
         import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js';
-        import { PlotterRenderer } from '../src/plotter-renderer.js';
+        import { PlotterRenderer, debugRenderNormals } from '../src/plotter-renderer.js';
 
         let scene, camera, glRenderer, controls, mesh;
         let plotterRenderer;
+        let ambientLight, dirLight, dirLightHelper;
 
-        // Toggle for debug visualization vs normal output
-        const DEBUG_MODE = false; // Set to true for purple hidden lines + green visible
+        const PANEL_WIDTH = 312;
 
         function init() {
             scene = new THREE.Scene();
             scene.background = new THREE.Color(0x222222);
 
-            camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 1, 8000);
-            camera.position.set(900, 900, 900);
+            const sceneWidth = window.innerWidth - PANEL_WIDTH;
+            camera = new THREE.PerspectiveCamera(35, sceneWidth / window.innerHeight, 1, 8000);
+            camera.position.set(300, 300, 300);
 
             // WebGL renderer for 3D preview
             glRenderer = new THREE.WebGLRenderer({ antialias: true });
-            glRenderer.setSize(window.innerWidth, window.innerHeight);
+            glRenderer.setSize(sceneWidth, window.innerHeight);
             document.body.appendChild(glRenderer.domElement);
 
             // PlotterRenderer for SVG output
             plotterRenderer = new PlotterRenderer();
-            plotterRenderer.setSize(window.innerWidth, window.innerHeight);
+            plotterRenderer.setSize(sceneWidth, window.innerHeight);
             plotterRenderer.setGLRenderer(glRenderer);
 
             controls = new OrbitControls(camera, glRenderer.domElement);
@@ -185,25 +401,59 @@
             controls.dampingFactor = 0.05;
 
             // Lighting
-            const light = new THREE.DirectionalLight(0xffffff, 1);
-            light.position.set(300, 300, 300);
-            scene.add(light);
-            scene.add(new THREE.AmbientLight(0x404040));
+            // DirectionalLight pointed at origin (0,0,0)
+            dirLight = new THREE.DirectionalLight(0xffffff, 10);
+            dirLight.position.set(300, 1000, 500);
+            dirLight.target.position.set(0, 0, 0);
+            scene.add(dirLight);
+            scene.add(dirLight.target);
+
+            dirLightHelper = new THREE.DirectionalLightHelper(dirLight, 100, 0xff8800);
+            dirLightHelper.userData.excludeFromSVG = true;
+            scene.add(dirLightHelper);
+
+            ambientLight = new THREE.AmbientLight(0x404040);
+            scene.add(ambientLight);
 
             // Event listeners
             window.addEventListener('resize', onResize);
-
             document.getElementById('exportBtn').addEventListener('click', exportSVG);
+            document.getElementById('debugBtn').addEventListener('click', debugNormals);
             document.getElementById('modelSelect').addEventListener('change', (e) => {
                 loadModel(e.target.value);
             });
-
-            // Render button
             document.getElementById('renderBtn').addEventListener('click', render);
+
+            // Theme change - live update
+            ['themeDark', 'themeLight'].forEach(id => {
+                document.getElementById(id).addEventListener('change', updateTheme);
+            });
+
+            // Light position and intensity controls
+            ['lightX', 'lightY', 'lightZ', 'lightIntensity'].forEach(id => {
+                document.getElementById(id).addEventListener('input', updateLightPosition);
+            });
+
             // Load default model
             loadModel(document.getElementById('modelSelect').value);
 
             animate();
+        }
+
+        function updateLightPosition() {
+            const x = parseFloat(document.getElementById('lightX').value) || 500;
+            const y = parseFloat(document.getElementById('lightY').value) || 500;
+            const z = parseFloat(document.getElementById('lightZ').value) || 500;
+            const intensity = parseFloat(document.getElementById('lightIntensity').value) || 1;
+            dirLight.position.set(x, y, z);
+            dirLight.intensity = intensity;
+            dirLightHelper.update();
+        }
+
+        function updateTheme() {
+            const isLightTheme = document.getElementById('themeLight').checked;
+            scene.background = new THREE.Color(isLightTheme ? '#ffffff' : '#222222');
+            ambientLight.intensity = isLightTheme ? 2.0 : 0.25;
         }
 
         function loadModel(url) {
@@ -236,21 +486,17 @@
                 scene.add(mesh);
 
                 document.getElementById('stats').textContent =
-                    `Loaded ${geometry.attributes.position.count / 3} triangles. Click "Render Hidden Lines" when ready.`;
+                    `Loaded ${geometry.attributes.position.count / 3} triangles. Click "Render" when ready.`;
             });
         }
 
         function onResize() {
-            camera.aspect = window.innerWidth / window.innerHeight;
+            const sceneWidth = window.innerWidth - PANEL_WIDTH;
+            camera.aspect = sceneWidth / window.innerHeight;
             camera.updateProjectionMatrix();
-            glRenderer.setSize(window.innerWidth, window.innerHeight);
-            plotterRenderer.setSize(window.innerWidth, window.innerHeight);
+            glRenderer.setSize(sceneWidth, window.innerHeight);
+            plotterRenderer.setSize(sceneWidth, window.innerHeight);
         }
-
-        // WASM Full Pipeline
-
-
-
 
         function exportSVG() {
             const svgContent = plotterRenderer.domElement.outerHTML;
@@ -263,11 +509,54 @@
             URL.revokeObjectURL(url);
         }
 
+        function debugNormals() {
+            if (!mesh) {
+                document.getElementById('stats').textContent = 'Please load a model first';
+                return;
+            }
 
+            document.getElementById('stats').textContent = 'Rendering normal buffer...';
 
-        /**
-         * Render: Using PlotterRenderer API with toggleable layers
-         */
+            const sceneWidth = window.innerWidth - PANEL_WIDTH;
+            const width = sceneWidth;
+            const height = window.innerHeight;
+
+            // Get the raw normal buffer pixels
+            const pixels = debugRenderNormals(glRenderer, scene, camera, width, height);
+
+            // Display on debug canvas
+            const canvas = document.getElementById('debug-canvas');
+            canvas.width = width;
+            canvas.height = height;
+            canvas.style.display = 'block';
+            canvas.style.width = width + 'px';
+            canvas.style.height = height + 'px';
+
+            const ctx = canvas.getContext('2d');
+            const imageData = ctx.createImageData(width, height);
+
+            // Copy pixels to ImageData (flip Y because WebGL is bottom-up)
+            for (let y = 0; y < height; y++) {
+                for (let x = 0; x < width; x++) {
+                    const srcIdx = ((height - 1 - y) * width + x) * 4;
+                    const dstIdx = (y * width + x) * 4;
+                    imageData.data[dstIdx] = pixels[srcIdx];
+                    imageData.data[dstIdx + 1] = pixels[srcIdx + 1];
+                    imageData.data[dstIdx + 2] = pixels[srcIdx + 2];
+                    imageData.data[dstIdx + 3] = 255;
+                }
+            }
+
+            ctx.putImageData(imageData, 0, 0);
+            document.getElementById('stats').textContent = 'Normal buffer displayed. Click Debug again to hide.';
+
+            // Toggle - if clicked again, hide
+            canvas.onclick = () => {
+                canvas.style.display = 'none';
+                canvas.onclick = null;
+            };
+        }
+
         function render() {
             if (!mesh) {
                 document.getElementById('stats').textContent = 'Please load a model first';
@@ -276,7 +565,16 @@
 
             document.getElementById('stats').textContent = 'Rendering...';
 
-            // Configure PlotterRenderer from UI checkboxes
+            // Configure theme
+            const isLightTheme = document.getElementById('themeLight').checked;
+            plotterRenderer.theme = isLightTheme ? 'light' : 'dark';
+
+            // Update scene for theme
+            const themeColors = plotterRenderer.themes[plotterRenderer.theme];
+            scene.background = new THREE.Color(themeColors.background);
+            ambientLight.intensity = isLightTheme ? 2.0 : 0.25;
+
+            // Configure PlotterRenderer from UI
             plotterRenderer.showSilhouettes = document.getElementById('showSilhouettes').checked;
             plotterRenderer.showEdges = document.getElementById('showEdges').checked;
             plotterRenderer.showHatches = document.getElementById('showHatches').checked;
@@ -297,21 +595,50 @@
                 }
             };
 
-            console.time('Render');
+            // Configure brightness shading (auto-invert based on theme)
+            plotterRenderer.hatchOptions.brightnessShading = {
+                enabled: document.getElementById('brightnessShading').checked,
+                invert: !isLightTheme,
+                intensity: parseFloat(document.getElementById('lightIntensity').value) || 50
+            };
 
-            // Clear and render using PlotterRenderer
-            plotterRenderer.clear();
-            plotterRenderer.renderGPULayers(scene, camera);
+            // Configure min/max spacing, inset, and connect hatches
+            plotterRenderer.hatchOptions.minSpacing = parseFloat(document.getElementById('minSpacing').value) || 3;
+            plotterRenderer.hatchOptions.maxSpacing = parseFloat(document.getElementById('maxSpacing').value) || 40;
+            const insetVal = parseFloat(document.getElementById('insetPixels').value);
+            plotterRenderer.hatchOptions.insetPixels = isNaN(insetVal) ? 2 : insetVal;
+            plotterRenderer.hatchOptions.connectHatches = document.getElementById('connectHatches').checked;
 
-            // Replace the SVG overlay with PlotterRenderer's output
-            const svgOverlay = document.getElementById('svg-overlay');
-            svgOverlay.innerHTML = plotterRenderer.domElement.innerHTML;
-            svgOverlay.setAttribute('width', window.innerWidth);
-            svgOverlay.setAttribute('height', window.innerHeight);
-            svgOverlay.setAttribute('viewBox', plotterRenderer.domElement.getAttribute('viewBox'));
 
-            console.timeEnd('Render');
-            document.getElementById('stats').textContent = 'Render complete';
+            setTimeout(async () => {
+                const startTime = performance.now();
+                document.getElementById('stats').textContent = 'Rendering...';
+
+                // Set up progress callback
+                plotterRenderer.hatchOptions.progressCallback = (progress) => {
+                    document.getElementById('stats').textContent =
+                        `Rendering... ${Math.round(progress * 100)}%`;
+                };
+
+                // Clear and render using PlotterRenderer (async)
+                plotterRenderer.clear();
+                await plotterRenderer.renderGPULayers(scene, camera);
+
+                // Clear progress callback
+                plotterRenderer.hatchOptions.progressCallback = null;
+
+                // Replace the SVG overlay with PlotterRenderer's output
+                const svgOverlay = document.getElementById('svg-overlay');
+                const sceneWidth = window.innerWidth - PANEL_WIDTH;
+                svgOverlay.innerHTML = plotterRenderer.domElement.innerHTML;
+                svgOverlay.setAttribute('width', sceneWidth);
+                svgOverlay.setAttribute('height', window.innerHeight);
+                svgOverlay.setAttribute('viewBox', plotterRenderer.domElement.getAttribute('viewBox'));
+
+                const elapsed = performance.now() - startTime;
+                document.getElementById('stats').textContent = `Render completed in ${elapsed.toFixed(0)}ms`;
+            }, 50);
+
         }
 
         function animate() {
