@@ -234,6 +234,89 @@ var PlotterRenderer = function () {
         // Use hatchBoundary for clipping (inset boundary, falls back to regular boundary)
         const allRegionBounds = regions.map(r => r.hatchBoundary || r.boundary);
 
+        // Compute zoom-invariant spacing scale factor
+        // Project scene bounding box to screen space, use that size relative to canvas
+        let spacingScale = 1.0;
+        {
+          // Compute world-space bounding box of all meshes in scene
+          let minX = Infinity, maxX = -Infinity;
+          let minY = Infinity, maxY = -Infinity;
+          let minZ = Infinity, maxZ = -Infinity;
+
+          scene.traverse((obj) => {
+            if (!obj.isMesh || !obj.geometry) return;
+            obj.geometry.computeBoundingBox();
+            const bbox = obj.geometry.boundingBox;
+            if (!bbox) return;
+
+            // Transform bbox corners to world space
+            const corners = [
+              new Vector3(bbox.min.x, bbox.min.y, bbox.min.z),
+              new Vector3(bbox.max.x, bbox.max.y, bbox.max.z),
+              new Vector3(bbox.min.x, bbox.min.y, bbox.max.z),
+              new Vector3(bbox.min.x, bbox.max.y, bbox.min.z),
+              new Vector3(bbox.max.x, bbox.min.y, bbox.min.z),
+              new Vector3(bbox.min.x, bbox.max.y, bbox.max.z),
+              new Vector3(bbox.max.x, bbox.min.y, bbox.max.z),
+              new Vector3(bbox.max.x, bbox.max.y, bbox.min.z)
+            ];
+            for (const corner of corners) {
+              corner.applyMatrix4(obj.matrixWorld);
+              minX = Math.min(minX, corner.x);
+              maxX = Math.max(maxX, corner.x);
+              minY = Math.min(minY, corner.y);
+              maxY = Math.max(maxY, corner.y);
+              minZ = Math.min(minZ, corner.z);
+              maxZ = Math.max(maxZ, corner.z);
+            }
+          });
+
+          // Project bbox corners to screen space and compute screen-space bbox
+          if (isFinite(minX)) {
+            const worldCorners = [
+              new Vector3(minX, minY, minZ),
+              new Vector3(maxX, maxY, maxZ),
+              new Vector3(minX, minY, maxZ),
+              new Vector3(minX, maxY, minZ),
+              new Vector3(maxX, minY, minZ),
+              new Vector3(minX, maxY, maxZ),
+              new Vector3(maxX, minY, maxZ),
+              new Vector3(maxX, maxY, minZ)
+            ];
+
+            let screenMinX = Infinity, screenMaxX = -Infinity;
+            let screenMinY = Infinity, screenMaxY = -Infinity;
+
+            for (const corner of worldCorners) {
+              const projected = corner.clone().project(camera);
+              const screenX = (projected.x + 1) * _svgWidth / 2;
+              const screenY = (1 - projected.y) * _svgHeight / 2;
+              screenMinX = Math.min(screenMinX, screenX);
+              screenMaxX = Math.max(screenMaxX, screenX);
+              screenMinY = Math.min(screenMinY, screenY);
+              screenMaxY = Math.max(screenMaxY, screenY);
+            }
+
+            const screenWidth = screenMaxX - screenMinX;
+            const screenHeight = screenMaxY - screenMinY;
+            const screenSize = Math.max(screenWidth, screenHeight);
+            const canvasSize = Math.max(_svgWidth, _svgHeight);
+
+            // Scale factor: model screen size / canvas size
+            // When model fills canvas, spacingScale = 1
+            // When model is smaller, spacingScale < 1 (denser relative spacing)
+            if (screenSize > 0 && canvasSize > 0) {
+              spacingScale = screenSize / canvasSize;
+            }
+
+            console.log(`[Hatching] screen bbox: ${screenWidth.toFixed(0)}x${screenHeight.toFixed(0)}px, canvas: ${canvasSize}px, spacingScale=${spacingScale.toFixed(3)}`);
+          }
+        }
+
+
+
+
+
 
         // Collect hole regions for clipping (regardless of depth order)
         const holeRegions = regions.filter(r => r.isHole);
@@ -286,18 +369,31 @@ var PlotterRenderer = function () {
           const regionStartTime = performance.now();
           const regionTimeBudget = _this.hatchOptions.regionTimeBudget || 100; // ms per region
 
+          // Scale axisSettings spacing values too
+          const scaledAxisSettings = {};
+          const rawAxisSettings = _this.hatchOptions.axisSettings || {};
+          for (const axis of ['x', 'y', 'z']) {
+            const settings = rawAxisSettings[axis] || {};
+            scaledAxisSettings[axis] = {
+              rotation: settings.rotation || 0,
+              spacing: (settings.spacing || _this.hatchOptions.baseSpacing) * spacingScale
+            };
+          }
+
           let hatches = generatePerspectiveHatches(region, camera, {
-            baseSpacing: _this.hatchOptions.baseSpacing,
-            minSpacing: _this.hatchOptions.minSpacing,
-            maxSpacing: _this.hatchOptions.maxSpacing,
+            baseSpacing: _this.hatchOptions.baseSpacing * spacingScale,
+            minSpacing: _this.hatchOptions.minSpacing * spacingScale,
+            maxSpacing: _this.hatchOptions.maxSpacing * spacingScale,
             depthFactor: _this.hatchOptions.depthFactor,
             insetPixels: _this.hatchOptions.insetPixels,
             screenWidth: _svgWidth,
             screenHeight: _svgHeight,
-            axisSettings: _this.hatchOptions.axisSettings,
+            axisSettings: scaledAxisSettings,
             brightness: brightness,
             invertBrightness: shadingOpts.invert || false
           });
+
+
 
           // Check time budget after hatch generation
           if (performance.now() - regionStartTime > regionTimeBudget) {
