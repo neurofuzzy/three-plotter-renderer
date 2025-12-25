@@ -110,7 +110,7 @@ plotterRenderer.hatchOptions = {
   stroke: 'black',
   strokeWidth: '1px',
   baseSpacing: 8,
-  insetPixels: 3,    // Erode hatch boundaries
+  insetPixels: 2,    // Erode hatch boundaries
   frameBudgetMs: 16, // Yield to browser every ~16ms (60fps)
   progressCallback: (p) => console.log(`${Math.round(p*100)}%`),
   axisSettings: {

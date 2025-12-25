@@ -94,7 +94,7 @@ var PlotterRenderer = function () {
     minSpacing: 3,
     maxSpacing: 40,
     depthFactor: 0.5,
-    insetPixels: 3,
+    insetPixels: 2,
     stroke: null,  // null = use theme
     strokeWidth: '1px',
     axisSettings: {
@@ -309,7 +309,6 @@ var PlotterRenderer = function () {
               spacingScale = screenSize / canvasSize;
             }
 
-            console.log(`[Hatching] screen bbox: ${screenWidth.toFixed(0)}x${screenHeight.toFixed(0)}px, canvas: ${canvasSize}px, spacingScale=${spacingScale.toFixed(3)}`);
           }
         }
 

@@ -310,8 +310,15 @@
                     </div>
                 </div>
                 <div class="control-row">
+                    <span class="control-label">Inset</span>
+                    <div class="input-group">
+                        <input type="number" id="insetPixels" value="2" step="1" min="0" title="Inset from edges (px)">
+                    </div>
+                </div>
+                <div class="control-row">
                     <label><input type="checkbox" id="connectHatches"> Connect Lines</label>
                 </div>
+
             </div>
 
             <!-- Lighting Section -->
@@ -559,10 +566,13 @@
                 intensity: parseFloat(document.getElementById('lightIntensity').value) || 1
             };
 
-            // Configure min/max spacing for brightness-based hatching
+            // Configure min/max spacing and inset for brightness-based hatching
             plotterRenderer.hatchOptions.minSpacing = parseFloat(document.getElementById('minSpacing').value) || 3;
             plotterRenderer.hatchOptions.maxSpacing = parseFloat(document.getElementById('maxSpacing').value) || 40;
+            const insetVal = parseFloat(document.getElementById('insetPixels').value);
+            plotterRenderer.hatchOptions.insetPixels = isNaN(insetVal) ? 2 : insetVal;
             plotterRenderer.hatchOptions.connectHatches = document.getElementById('connectHatches').checked;
+
 
             // Update matrices
             primitives.forEach(m => m.updateMatrixWorld(true));
